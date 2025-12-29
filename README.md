@@ -84,7 +84,7 @@
     </td>
     <td align="center">
       <img width="50" height="50" alt="Notion" src="https://github.com/user-attachments/assets/c58ba527-20c4-4ac3-85a0-e0a357b0257e" />
-      <br><a href="https://www.notion.so/SyncLab-2d2ae04820548006958ff5057ef92c16?source=copy_link">Notion</a>
+      <br><a href="https://www.notion.so/SyncLab-DashBoard-2d8ae048205480abb3b2df51abe2e569?source=copy_link">Notion</a>
     </td>
   </tr>
 </table>
