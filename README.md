@@ -1,9 +1,9 @@
-# SyncLab
+# 📹 SyncLab
 ### 📖 프로젝트 개요
 본 프로젝트는 여러 각도에서 촬영한 스포츠 경기를 웹을 통해 하나의 영상으로 편집하는 시스템입니다. <br>
 이를 통해 사용자가 원하는 각도 또는 가장 적합한 각도에서 경기를 보여주거나 하이라이트를 생성하여 몰입감을 더해줄 수 있습니다.
 ## 📁 시스템 구성도
-<img width="1399" height="803" alt="image" src="https://github.com/user-attachments/assets/3f8e858a-5e0d-4b3c-ab15-b90b508cdfdd" />
+<img width="1399" height="803" alt="image" src="https://github.com/user-attachments/assets/28b3259c-aaf0-47d4-9678-a6b2cc0f7ac2" />
 
 ### ⚙️ 개발 환경
 
@@ -13,6 +13,10 @@
     <td align="center">
       <img src = "https://upload.wikimedia.org/wikipedia/commons/thumb/c/c3/Python-logo-notext.svg/1200px-Python-logo-notext.svg.png" alt="Python" width = "50" height = "50"/> 
       <br>Python
+    </td>
+    <td align="center">
+      <img width="50" height="50" alt="C" src="https://i.namu.wiki/i/KcqDuQYTxNpUcLIMZTg28QXse0XiWx1G7K68kYYCo1GuhoHmhB_V8Qe9odGGt0BH9-0nQZTN53WXTNpDmwVfWQ.svg" />
+      <br>C
     </td>
     <td align="center">
       <img src = "https://avatars.githubusercontent.com/u/59276?s=280&v=4" alt = "C++" width = "50" height = "50"/> 
@@ -29,6 +33,20 @@
   </tr>
 </table>
 
+#### 서버 소프트웨어
+<table>
+  <tr>
+    <td align="center">
+      <img width="50" height="50" alt="Nginx" src="https://nginxstore.com/wp-content/uploads/2024/06/nginx-svgrepo-com.svg" />
+      <br>Nginx
+    </td>
+    <td align="center">
+      <img width="50" height="50" alt="Uvicorn" src="https://github.com/user-attachments/assets/57c235c9-8cd5-4430-bd20-1fcea426c678"/>
+      <br>Uvicorn
+    </td>
+  </tr>
+</table>
+
 #### 라이브러리 및 프레임워크
 <table>
   <tr>
@@ -38,7 +56,7 @@
     </td>
     <td align="center">
       <img width="50" height="50" alt="FastAPI" src="https://github.com/user-attachments/assets/d59f1229-3677-4fdf-ab27-a0e6f73b22fb" />
-      <br>fastAPI
+      <br>FastAPI
     </td>
     <td align="center">
       <img width="50" height="50" alt="ffmpeg" src="https://github.com/user-attachments/assets/5d0990a4-9885-4f2d-9cf9-53e6a1735334" />
