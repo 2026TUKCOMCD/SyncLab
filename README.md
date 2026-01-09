@@ -5,8 +5,10 @@
 ## 📁 시스템 구성도
 <img width="1399" height="803" alt="image" src="https://github.com/user-attachments/assets/28b3259c-aaf0-47d4-9678-a6b2cc0f7ac2" />
 
-### ⚙️ 개발 환경
-
+<details>
+<summary>🛠️ 개발 환경</summary>
+<div>
+  
 #### 개발 언어
 <table>
   <tr>
@@ -106,3 +108,33 @@
     </td>
   </tr>
 </table>
+</div>
+</details>
+
+<details>
+  <summary>📺 데모 환경</summary>
+
+  #### 데모 환경
+  |구분|환경|
+  |:---:|:---:|
+  |서버 운영체제|macOS Sequoia|
+  |하드웨어|Apple Macbook Pro (M4 Pro 칩셋)|
+  |CPU|M4 Pro(12 Core)|
+  |RAM|24GB|
+  |모바일|Samsung Galaxy Series(S25, S24 Plus, Buddy2, Note10)|
+  |저장소 및 DB|Amazon Web Service S3|
+</details>
+<details>
+  <summary>🚀 운용 환경</summary>
+
+  #### 운용 환경
+  |구분|환경|
+  |:---:|:---:|
+  |서버 운영체제|Ubuntu Linux 24.04 LTS|
+  |인스턴스 유형|t3.medium|
+  |CPU|2 vCPU 2Core|
+  |RAM|4GB|
+  |Architecture|x86_64(Intel/AMD)|
+  
+  **서버 운용부분에서 Local -> AWS EC2 전환 / 저장소, Docker 사용 동일**
+</details>
