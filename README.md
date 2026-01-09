@@ -3,7 +3,8 @@
 본 프로젝트는 여러 각도에서 촬영한 스포츠 경기를 웹을 통해 하나의 영상으로 편집하는 시스템입니다. <br>
 이를 통해 사용자가 원하는 각도 또는 가장 적합한 각도에서 경기를 보여주거나 하이라이트를 생성하여 몰입감을 더해줄 수 있습니다.
 ## 📁 시스템 구성도
-<img width="1399" height="803" alt="image" src="https://github.com/user-attachments/assets/28b3259c-aaf0-47d4-9678-a6b2cc0f7ac2" />
+<img width="1399" height="803" alt="image" src="https://github.com/user-attachments/assets/4a901d5b-4112-4ddf-af70-45f362a6af7a" />
+ />
 
 <details>
 <summary>🛠️ 개발 환경</summary>
