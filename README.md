@@ -20,10 +20,6 @@
       <img width="50" height="50" alt="C" src="https://i.namu.wiki/i/KcqDuQYTxNpUcLIMZTg28QXse0XiWx1G7K68kYYCo1GuhoHmhB_V8Qe9odGGt0BH9-0nQZTN53WXTNpDmwVfWQ.svg" />
       <br>C
     </td>
-    <td align="center">
-      <img src = "https://avatars.githubusercontent.com/u/59276?s=280&v=4" alt = "C++" width = "50" height = "50"/> 
-      <br>C++
-    </td>
       <td align="center">
         <img width="50" height="50" alt="JavaScript" src="https://github.com/user-attachments/assets/f20c9003-b92f-4cc3-8c69-34178aed116e" /> 
         <br>JavaScript
