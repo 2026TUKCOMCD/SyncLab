@@ -65,9 +65,15 @@ dependencies {
     implementation("androidx.camera:camera-video:$camerax_version")
     implementation("androidx.camera:camera-view:$camerax_version")
     implementation("androidx.camera:camera-lifecycle:$camerax_version")
+    // NTP 통신 라이브러리
+    implementation("commons-net:commons-net:3.9.0")
 
     // 2. AWS S3 (영상 직접 업로드용)
     implementation("com.amazonaws:aws-android-sdk-s3:2.73.0")
+    implementation("com.squareup.retrofit2:retrofit:2.9.0")
+    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+    implementation("com.squareup.okhttp3:okhttp:4.11.0")
+    implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
 
     // 3. NTP 시간 동기화 (정확한 촬영 시작 시간 확보용)
     implementation("com.github.instacart.truetime-android:library:3.5")
@@ -80,6 +86,8 @@ dependencies {
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
     implementation("androidx.activity:activity-compose:1.9.3")
+
+
 
     // 6. Compose 및 UI 관련 (중복되는 libs.core/activity/lifecycle 삭제됨)
     implementation(platform(libs.androidx.compose.bom))
@@ -103,4 +111,5 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
+
 }
