@@ -1,31 +1,18 @@
-package com.tukorea.synclab_mobile.api
+package com.tukorea.synclab_mobile.data.api // 이미지 경로 기준
 
 import okhttp3.MultipartBody
 import okhttp3.RequestBody
+import okhttp3.ResponseBody
 import retrofit2.Response
 import retrofit2.http.Multipart
 import retrofit2.http.POST
 import retrofit2.http.Part
 
-/**
- * SyncLab 서버 통신 인터페이스
- */
-interface VideoUploadService {
+interface VidoeUploadService { // 파일명과 일치시킴
     @Multipart
-    @POST("/upload/video")
-    suspend fun uploadVideoData(
-        @Part video: MultipartBody.Part,      // .mp4 파일
-        @Part metadata: MultipartBody.Part,   // .json 파일
-        @Part("videoId") videoId: RequestBody // 분석용 식별자
-    ): Response<UploadResponse>
+    @POST("api/video/metadata")
+    suspend fun registerVideoMetadata(
+        @Part metadata: MultipartBody.Part,
+        @Part("videoId") videoId: RequestBody
+    ): Response<ResponseBody>
 }
-
-/**
- * 서버 응답 데이터 모델
- */
-data class UploadResponse(
-    val success: Boolean,
-    val message: String,
-    val videoUrl: String?,
-    val metadataUrl: String?
-)

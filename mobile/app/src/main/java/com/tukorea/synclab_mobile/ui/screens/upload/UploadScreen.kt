@@ -1,59 +1,65 @@
 package com.tukorea.synclab_mobile.ui.screens.upload
 
 import android.util.Log
+import android.widget.Toast
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.VideoLibrary
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.tukorea.synclab_mobile.data.repository.UploadRepository
 import com.tukorea.synclab_mobile.utils.VideoFileManager
+import com.tukorea.synclab_mobile.utils.S3Uploader
+import kotlinx.coroutines.launch
 import java.io.File
 
-/**
- * 저장된 영상 목록을 보여주고 업로드 및 삭제를 관리하는 화면
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UploadScreen() {
     val context = LocalContext.current
-    val TAG = "UI_LIFECYCLE"
+    val scope = rememberCoroutineScope()
+    val repository = remember { UploadRepository() }
 
-    // 1. 상태를 초기값 없이 선언
     var videoFiles by remember { mutableStateOf<List<File>>(emptyList()) }
-    var cacheSize by remember { mutableStateOf(0.0) }
+    var presignedUrlInput by remember { mutableStateOf(S3Uploader.TEST_URL) }
+    var isUploading by remember { mutableStateOf(false) }
+    var uploadProgress by remember { mutableFloatStateOf(0f) }
 
-    // 2. [핵심] 화면이 보일 때마다 강제로 데이터 로드 및 로그 출력
-    LaunchedEffect(Unit) {
-        Log.e(TAG, ">>> UploadScreen 진입함 - 데이터 로드 시작")
+    // URL 수정 모드 여부
+    var isEditMode by remember { mutableStateOf(false) }
+
+    val loadData = {
         videoFiles = VideoFileManager.getVideoFiles(context)
-        cacheSize = VideoFileManager.getCacheSizeMb(context)
-        Log.e(TAG, ">>> 검색된 파일 개수: ${videoFiles.size}")
     }
 
-    // 목록 새로고침 함수
-    val refreshList = {
-        videoFiles = VideoFileManager.getVideoFiles(context)
-        cacheSize = VideoFileManager.getCacheSizeMb(context)
+    LaunchedEffect(Unit) {
+        loadData()
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("업로드 관리", fontWeight = FontWeight.Bold) },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
-                )
+                actions = {
+                    IconButton(onClick = { loadData() }) {
+                        Icon(Icons.Default.Refresh, contentDescription = "새로고침")
+                    }
+                }
             )
         }
     ) { paddingValues ->
@@ -61,70 +67,113 @@ fun UploadScreen() {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
-                .padding(16.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            // 요약 정보 카드
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
-            ) {
+            // --- [컴팩트 URL 섹션] ---
+            if (!isEditMode) {
+                // 평상시: 짧은 텍스트로 표시
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 8.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                        .clickable { isEditMode = true }
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.VideoLibrary, contentDescription = null)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column {
-                        Text(text = "현재 저장된 영상: ${videoFiles.size}개", fontSize = 16.sp)
-                        Text(
-                            text = "사용 중인 용량: ${String.format("%.2f", cacheSize)} MB",
-                            fontSize = 14.sp,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                    }
+                    Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Gray)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "URL: $presignedUrlInput",
+                        style = TextStyle(fontSize = 11.sp, color = Color.Gray),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text("수정", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
                 }
+            } else {
+                // 수정 모드: TextField 표시
+                TextField(
+                    value = presignedUrlInput,
+                    onValueChange = { presignedUrlInput = it },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                    textStyle = TextStyle(fontSize = 12.sp),
+                    label = { Text("Presigned URL 수정", fontSize = 10.sp) },
+                    trailingIcon = {
+                        IconButton(onClick = { isEditMode = false }) {
+                            Icon(Icons.Default.Check, contentDescription = "완료", tint = Color.Green)
+                        }
+                    },
+                    singleLine = true
+                )
             }
 
-            // 영상 목록 리스트
+            if (isUploading) {
+                LinearProgressIndicator(
+                    progress = { uploadProgress },
+                    modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
+                )
+                Text("진행 중... ${(uploadProgress * 100).toInt()}%", fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(text = "보관함 영상 (${videoFiles.size})", style = MaterialTheme.typography.titleSmall)
+
+            // --- [영상 목록: 공간 최대 확보] ---
             if (videoFiles.isEmpty()) {
-                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Text("저장된 영상이 없습니다.", color = Color.Gray)
-                        Button(onClick = { refreshList() }, modifier = Modifier.padding(top = 8.dp)) {
-                            Text("새로고침")
-                        }
-                    }
+                Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                    Text("저장된 영상이 없습니다.", color = Color.LightGray)
                 }
             } else {
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(top = 8.dp, bottom = 16.dp)
                 ) {
                     items(videoFiles) { file ->
                         VideoFileItem(
                             file = file,
                             onDelete = {
                                 VideoFileManager.deleteFile(file)
-                                refreshList()
+                                loadData()
                             },
                             onUpload = {
-                                // 업로드 로직
+                                if (presignedUrlInput.isBlank()) {
+                                    Toast.makeText(context, "URL을 입력해주세요!", Toast.LENGTH_SHORT).show()
+                                    return@VideoFileItem
+                                }
+                                scope.launch {
+                                    isUploading = true
+                                    uploadProgress = 0f
+                                    val s3Result = repository.uploadVideoToS3(presignedUrlInput, file)
+                                    if (s3Result.isSuccess) {
+                                        uploadProgress = 0.5f
+                                        val jsonFile = File(file.parent, file.nameWithoutExtension + ".json")
+                                        if (jsonFile.exists()) {
+                                            val serverResult = repository.uploadMetadataToServer(jsonFile, file.nameWithoutExtension)
+                                            if (serverResult.isSuccess) {
+                                                uploadProgress = 1.0f
+                                                Toast.makeText(context, "성공!", Toast.LENGTH_SHORT).show()
+                                                VideoFileManager.deleteFile(file)
+                                                if(jsonFile.exists()) jsonFile.delete()
+                                                loadData()
+                                            } else {
+                                                Toast.makeText(context, "서버 등록 실패", Toast.LENGTH_SHORT).show()
+                                            }
+                                        } else {
+                                            uploadProgress = 1.0f
+                                            Toast.makeText(context, "S3 업로드 완료", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        Toast.makeText(context, "S3 실패", Toast.LENGTH_SHORT).show()
+                                    }
+                                    isUploading = false
+                                }
                             }
                         )
                     }
-                }
-            }
-
-            if (videoFiles.isNotEmpty()) {
-                Button(
-                    onClick = {
-                        VideoFileManager.clearAllCache(context)
-                        refreshList()
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                ) {
-                    Text("모든 캐시 데이터 삭제 (용량 확보)")
                 }
             }
         }
@@ -132,25 +181,28 @@ fun UploadScreen() {
 }
 
 @Composable
-fun VideoFileItem(file: File, onDelete: () -> Unit, onUpload: () -> Unit) {
+fun VideoFileItem(
+    file: File,
+    onDelete: () -> Unit,
+    onUpload: () -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
-        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = file.name, fontWeight = FontWeight.Medium, maxLines = 1)
-                Text(
-                    text = "${String.format("%.1f", file.length() / (1024.0 * 1024.0))} MB",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = Color.Gray
-                )
+                Text(text = file.name, fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(text = "${String.format("%.1f", file.length() / (1024.0 * 1024.0))} MB", fontSize = 11.sp, color = Color.Gray)
             }
-            IconButton(onClick = onUpload) {
-                Icon(Icons.Default.CloudUpload, contentDescription = "Upload", tint = MaterialTheme.colorScheme.primary)
+            IconButton(onClick = onUpload, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
             }
-            IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red)
+            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
+                Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red, modifier = Modifier.size(20.dp))
             }
         }
     }

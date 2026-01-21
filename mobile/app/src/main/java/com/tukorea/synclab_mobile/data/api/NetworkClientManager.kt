@@ -1,5 +1,6 @@
 package com.tukorea.synclab_mobile.api
 
+import com.tukorea.synclab_mobile.data.api.VidoeUploadService
 import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
@@ -20,12 +21,13 @@ object NetworkClient {
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
-    val service: VideoUploadService by lazy {
+    // ... 생략
+    val service: VidoeUploadService by lazy { // 타입을 VidoeUploadService로 변경
         Retrofit.Builder()
             .baseUrl(BASE_URL)
             .addConverterFactory(GsonConverterFactory.create())
             .client(client)
             .build()
-            .create(VideoUploadService::class.java)
+            .create(VidoeUploadService::class.java) // 여기도 변경
     }
 }

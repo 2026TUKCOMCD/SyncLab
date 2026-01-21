@@ -16,6 +16,17 @@ android {
             useLegacyPackaging = false
         }
     }
+
+    packaging {
+        resources {
+            // INDEX.LIST 파일이 중복될 경우 빌드에서 제외합니다.
+            excludes += "/META-INF/INDEX.LIST"
+
+            // 혹시 몰라 자주 발생하는 다른 중복 파일들도 미리 처리해두면 좋습니다.
+            excludes += "/META-INF/io.netty.versions.properties"
+            excludes += "/META-INF/DEPENDENCIES"
+        }
+    }
     viewBinding{
         enable = true
     }
@@ -58,6 +69,7 @@ android {
 
 dependencies {
     implementation(libs.androidx.navigation.fragment)
+    implementation(libs.firebase.appdistribution.gradle)
     // 1. 영상 촬영 (Google 권장 CameraX 라이브러리)
     val camerax_version = "1.3.0"
     implementation("androidx.camera:camera-core:$camerax_version")
@@ -65,6 +77,8 @@ dependencies {
     implementation("androidx.camera:camera-video:$camerax_version")
     implementation("androidx.camera:camera-view:$camerax_version")
     implementation("androidx.camera:camera-lifecycle:$camerax_version")
+    // "ListenableFuture" class not found error fix
+    implementation("com.google.guava:listenablefuture:1.0")
     // NTP 통신 라이브러리
     implementation("commons-net:commons-net:3.9.0")
 
@@ -88,7 +102,14 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
 
 
-
+    // 6. 버전 충돌 방지 버전 강제
+    implementation("com.google.android.gms:play-services-tasks:18.0.2")
+    implementation("com.google.guava:guava:31.1-android")
+    constraints {
+        implementation("com.google.guava:guava:31.1-android") {
+            because("CameraX와 다른 라이브러리 간의 ListenableFuture 버전 충돌 해결")
+        }
+    }
     // 6. Compose 및 UI 관련 (중복되는 libs.core/activity/lifecycle 삭제됨)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
