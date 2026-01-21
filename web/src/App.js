@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Play, Pause, SkipBack, SkipForward, Save, Plus } from 'lucide-react';
+import { Scissors, Play, Pause, SkipBack, SkipForward, Save, Plus, Theater } from 'lucide-react';
 
 const MultiCamEditor = () => {
   const [isPlaying, setIsPlaying] = useState(false);
@@ -11,17 +11,30 @@ const MultiCamEditor = () => {
   const [savedClips, setSavedClips] = useState([]);
   const [isDraggingIn, setIsDraggingIn] = useState(false);
   const [isDraggingOut, setIsDraggingOut] = useState(false);
-
   const videoRefs = useRef({});
   const programVideoRef = useRef(null);
   const timelineRef = useRef(null);
   const animationRef = useRef(null);
+  const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
+
+  const THEME = {
+    bgMain: '#16181dff',      // 아주 깊은 남색 계열 블랙
+    bgPanel: '#16181dff',     // 패널 배경
+    bgElement: '#1E2330',   // 리스트 아이템 배경
+    border: '#2A3441',      // 경계선
+    textMain: '#F3F4F6',    // 메인 텍스트
+    textMuted: '#9CA3AF',   // 보조 텍스트
+    accent: '#3B82F6',      // 기본 강조 (파랑)
+    danger: '#EF4444',      // 경고/삭제/Live (빨강)
+    success: '#10B981',     // 성공/In점 (초록)
+    neonGlow: '0 0 10px rgba(59, 130, 246, 0.5)', // 네온 효과
+  };
 
   const cameras = [
-    { id: 0, name: 'CAM 1', color: '#ef4444', photographer: 'Kim', syncOffset: 0, videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/KakaoTalk_Video_2026-01-20-14-05-14.mp4' },
-    { id: 1, name: 'CAM 2', color: '#3b82f6', photographer: 'Lee', syncOffset: -0.2, videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/KakaoTalk_Video_2026-01-20-14-58-57.mp4' },
-    { id: 2, name: 'CAM 3', color: '#10b981', photographer: 'Park', syncOffset: 0.1, videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/KakaoTalk_Video_2026-01-20-14-05-14.mp4' },
-    { id: 3, name: 'CAM 4', color: '#f59e0b', photographer: 'Choi', syncOffset: -0.05, videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/KakaoTalk_Video_2026-01-20-14-58-57.mp4' },
+    { id: 0, name: 'CAM 1', color: '#F87171', videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/KakaoTalk_Video_2026-01-20-14-05-14.mp4' },
+    { id: 1, name: 'CAM 2', color: '#60A5FA', videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/KakaoTalk_Video_2026-01-20-14-58-57.mp4' },
+    { id: 2, name: 'CAM 3', color: '#34D399', videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/KakaoTalk_Video_2026-01-21-13-47-08.mp4' },
+    { id: 3, name: 'CAM 4', color: '#FBBF24', videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/KakaoTalk_Video_2026-01-21-13-47-35.mp4' },
   ];
 
   useEffect(() => {
@@ -46,7 +59,7 @@ const MultiCamEditor = () => {
       };
       animationRef.current = requestAnimationFrame(updateTime);
     }
-    
+
     return () => {
       if (animationRef.current) {
         cancelAnimationFrame(animationRef.current);
@@ -56,13 +69,13 @@ const MultiCamEditor = () => {
 
   const togglePlay = () => {
     if (selectedSourceCam === null) return;
-    
+
     const allVideos = Object.values(videoRefs.current).filter(v => v);
     const programVideo = programVideoRef.current;
-    
+
     if (!isPlaying) {
-      allVideos.forEach(v => v.play().catch(() => {}));
-      if (programVideo) programVideo.play().catch(() => {});
+      allVideos.forEach(v => v.play().catch(() => { }));
+      if (programVideo) programVideo.play().catch(() => { });
       setIsPlaying(true);
     } else {
       allVideos.forEach(v => v.pause());
@@ -81,13 +94,13 @@ const MultiCamEditor = () => {
 
   const handleSourceCamClick = (camId) => {
     if (selectedSourceCam === camId) return;
-    
+
     setSelectedSourceCam(camId);
     setCurrentTime(0);
     setInPoint(null);
     setOutPoint(null);
     setIsPlaying(false);
-    
+
     Object.values(videoRefs.current).forEach(v => {
       if (v) v.currentTime = 0;
     });
@@ -96,17 +109,47 @@ const MultiCamEditor = () => {
     }
   };
 
+  const addCameraToMultiview = (camera) => {
+    const emptySlotIndex = multiviewCameras.findIndex(cam => cam === null);
+    if (emptySlotIndex !== -1) {
+      const newMultiview = [...multiviewCameras];
+      newMultiview[emptySlotIndex] = camera;
+      setMultiviewCameras(newMultiview);
+    } else {
+      alert('멀티뷰가 가득 찼습니다. (최대 4개)');
+    }
+  };
+
+  const removeCameraFromMultiview = (slotIndex) => {
+    const newMultiview = [...multiviewCameras];
+    const removedCam = newMultiview[slotIndex];
+    newMultiview[slotIndex] = null;
+    setMultiviewCameras(newMultiview);
+
+    if (selectedSourceCam === removedCam?.id) {
+      setSelectedSourceCam(null);
+      setInPoint(null);
+      setOutPoint(null);
+    }
+  };
+
+  const handleMultiviewSlotClick = (slotIndex) => {
+    const camera = multiviewCameras[slotIndex];
+    if (camera) {
+      handleSourceCamClick(camera.id);
+    }
+  };
   const handleTimelineClick = (e) => {
     if (selectedSourceCam === null) return;
     if (isDraggingIn || isDraggingOut) return;
-    
+
     const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const percent = x / rect.width;
     const newTime = percent * duration;
-    
+
     setCurrentTime(newTime);
-    
+
     Object.values(videoRefs.current).forEach(v => {
       if (v) v.currentTime = newTime;
     });
@@ -137,27 +180,27 @@ const MultiCamEditor = () => {
       if (outPoint !== null && newTime >= outPoint) {
         newTime = outPoint - 0.1;
       }
-      
-      const conflictClip = savedClips.find(clip => 
+
+      const conflictClip = savedClips.find(clip =>
         newTime >= clip.inPoint && newTime < clip.outPoint
       );
       if (conflictClip) {
         newTime = conflictClip.outPoint;
       }
-      
+
       setInPoint(newTime);
     } else if (isDraggingOut) {
       if (inPoint !== null && newTime <= inPoint) {
         newTime = inPoint + 0.1;
       }
-      
-      const conflictClip = savedClips.find(clip => 
+
+      const conflictClip = savedClips.find(clip =>
         newTime > clip.inPoint && newTime <= clip.outPoint
       );
       if (conflictClip) {
         newTime = conflictClip.inPoint;
       }
-      
+
       setOutPoint(newTime);
     }
   };
@@ -216,7 +259,7 @@ const MultiCamEditor = () => {
 
     const updatedClips = [...savedClips, newClip].sort((a, b) => a.inPoint - b.inPoint);
     setSavedClips(updatedClips);
-    
+
     setInPoint(outPoint);
     setOutPoint(null);
     setCurrentTime(outPoint);
@@ -236,9 +279,15 @@ const MultiCamEditor = () => {
   const totalClipDuration = savedClips.reduce((sum, clip) => sum + clip.duration, 0);
 
   return (
-    <div style={{ minheight: '100vh', backgroundColor: '#ffffffff', color: 'black', display: 'flex', flexDirection: 'column' }}>
-      <div style={{ backgroundColor: '#1f2937', borderBottom: '1px solid #374151', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <h1 style={{ fontSize: '20px', fontWeight: 'bold' }}>멀티캠 편집 시스템</h1>
+    <div style={{ minheight: '100vh', backgroundColor: THEME.bgMain, color: THEME.textMain, display: 'flex', flexDirection: 'column' }}>
+      {/* 헤더 부분 */}
+      <div style={{ backgroundColor: THEME.bgPanel, borderBottom: '1px solid #374151', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8aea5eff, #5f9de9ff)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Scissors size={18} color="white" />
+          </div>
+          <h1 style={{ fontSize: '20px', fontWeight: 'bold' }}>SyncLab Editor</h1>
+        </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div style={{ fontSize: '14px', color: '#9ca3af' }}>
             총 클립: {savedClips.length}개 | 총 길이: {formatTime(totalClipDuration)}
@@ -250,83 +299,146 @@ const MultiCamEditor = () => {
         </div>
       </div>
 
+      {/* 메인 작업 화면 */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
-        <div style={{ width: '256px', backgroundColor: '#1f2937', borderRight: '1px solid #374151', padding: '16px', overflowY: 'auto' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>📁 리소스 보관함</h2>
+
+        {/* 좌측 사이드 바 */}
+        <div style={{ width: '200px', backgroundColor: THEME.bgPanel, borderRight: `1px solid ${THEME.border}`, padding: '16px', overflowY: 'auto' }}>
+          <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>💾 리소스 보관함</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {cameras.map((cam) => (
-              <div key={cam.id} style={{ backgroundColor: '#374151', borderRadius: '8px', padding: '12px', cursor: 'pointer' }}>
-                <div style={{ aspectRatio: '16/9', backgroundColor: '#111827', borderRadius: '6px', marginBottom: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px' }}>
-                  🎥
-                </div>
-                <div style={{ fontSize: '14px' }}>
-                  <div style={{ fontWeight: '600', color: cam.color }}>{cam.name}</div>
-                  <div style={{ color: '#9ca3af', fontSize: '12px', marginTop: '4px' }}>촬영자: {cam.photographer}</div>
-                  <div style={{ color: '#9ca3af', fontSize: '12px' }}>Sync: {cam.syncOffset > 0 ? '+' : ''}{cam.syncOffset}s</div>
+              <div key={cam.id} style={{
+                backgroundColor: '#374151', borderRadius: '8px', padding: '12px', cursor: 'pointer',
+                opacity: multiviewCameras.some(c => c?.id === cam.id) ? 0.5 : 1,
+                border: multiviewCameras.some(c => c?.id === cam.id) ? '2px solid #10b981' : 'none'
+              }}
+                onClick={() => addCameraToMultiview(cam)}
+              >
+                <div style={{ aspectRatio: '16/9', overflow: 'hidden', position: 'relative' }}>
+                  {cam.videoUrl ? (
+                    <video
+                      src={`${cam.videoUrl}#t=0.1`}  // 0.1초 지점의 프레임 로드
+                      muted
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                      preload="metadata"
+                    />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '32px' }}>
+                      🎥
+                    </div>
+                  )}
+                  {multiviewCameras.some(c => c?.id === cam.id) && (
+                    <div style={{ position: 'absolute', top: '4px', right: '4px', backgroundColor: '#10b981', color: 'white', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px', fontWeight: 'bold' }}>
+                      ✓
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
           </div>
         </div>
-
+        {/* 멀티뷰 부분 */}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, display: 'flex', padding: '16px', gap: '16px' }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <h2 style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: '#9ca3af' }}>멀티뷰 소스</h2>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', flex: 1 }}>
-                {cameras.map((cam) => (
+              <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#9ca3af' }}>멀티뷰 소스</h2>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', flex: 1, gap:'4px' }}>
+                {multiviewCameras.map((cam, slotIndex) => (
                   <div
-                    key={cam.id}
-                    onClick={() => handleSourceCamClick(cam.id)}
+                    key={slotIndex}
+                    onClick={() => handleMultiviewSlotClick(slotIndex)}
                     style={{
                       position: 'relative',
                       backgroundColor: 'black',
-                      borderRadius: '8px',
+                      height: '300px',
                       overflow: 'hidden',
-                      cursor: 'pointer',
-                      border: selectedSourceCam === cam.id ? `4px solid ${cam.color}` : 'none',
-                      height:'360px'
+                      cursor: cam ? 'pointer' : 'default',
+                      border: cam && selectedSourceCam === cam.id
+                        ? `4px solid ${cam.color}`
+                        : '2px #4b5563',
+                      boxShadow: cam && selectedSourceCam === cam.id
+                        ? `0 0 16px 2px ${cam.color}60`
+                        : 'none',
+                      transition: 'all 0.1s'
                     }}
                   >
-                    <video
-                      ref={el => videoRefs.current[cam.id] = el}
-                      src={cam.videoUrl}
-                      onLoadedMetadata={(e) => handleVideoLoaded(cam.id, e)}
-                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                      muted
-                      playsInline
-                    />
-                    <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: cam.color }}>
-                      {cam.name}
-                    </div>
-                    {selectedSourceCam === cam.id && (
-                      <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
-                        <div style={{ width: '12px', height: '12px', backgroundColor: '#dc2626', borderRadius: '50%', animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
+                    {cam ? (
+                      <>
+                        <video
+                          ref={el => {
+                            if (el) videoRefs.current[cam.id] = el;  // ref에 비디오 등록
+                          }}
+                          src={cam.videoUrl}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          muted                    // 음소거 (멀티뷰는 음소거)
+                          playsInline             // 모바일 대응
+                          onLoadedMetadata={(e) => handleVideoLoaded(cam.id, e)}  // 비디오 로드 시
+                        />
+                        <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: cam.color }}>
+                          {cam.name}
+                        </div>
+                        {selectedSourceCam === cam.id && (
+                          <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
+                            <div style={{ width: '12px', height: '12px', backgroundColor: '#dc2626', borderRadius: '50%', animation: 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' }} />
+                          </div>
+                        )}
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            removeCameraFromMultiview(slotIndex);
+                          }}
+                          style={{
+                            position: 'absolute',
+                            top: '8px',
+                            right: '8px',
+                            backgroundColor: '#dc2626',
+                            borderRadius: '50%',
+                            width: '24px',
+                            height: '24px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            fontSize: '16px',
+                            border: 'none',
+                            color: 'white',
+                            cursor: 'pointer',
+                            opacity: 0,
+                            transition: 'opacity 0.2s'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.opacity = '1'}
+                          onMouseLeave={(e) => e.currentTarget.style.opacity = '0'}
+                        >
+                          ×
+                        </button>
+                      </>
+                    ) : (
+                      <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px', color: '#6b7280' }}>
+                        <div style={{ fontSize: '40px' }}>➕</div>
+                        <div style={{ fontSize: '12px' }}>왼쪽에서 카메라 선택</div>
                       </div>
                     )}
                   </div>
                 ))}
               </div>
             </div>
-
+            {/* 선택한 메인 비디오 화면 */}
             <div style={{ width: '50%', display: 'flex', flexDirection: 'column' }}>
-              <h2 style={{ fontSize: '12px', fontWeight: '600', marginBottom: '8px', color: '#9ca3af' }}>프로그램 모니터</h2>
-              <div style={{ flex: 1, backgroundColor: 'black', borderRadius: '8px', overflow: 'hidden', position: 'relative', height: '720px' }}>
+              <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#9ca3af' }}>프로그램 모니터</h2>
+              <div style={{ flex: 1, backgroundColor: 'black', borderRadius: '8px', overflow: 'hidden', position: 'relative', height: '600px' }}>
                 {selectedSourceCam === null ? (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px', color: '#6b7280' }}>
-                    <div style={{ fontSize: '60px' }}>📹</div>
                     <div style={{ fontSize: '18px' }}>왼쪽에서 카메라를 선택하세요</div>
                   </div>
                 ) : (
                   <>
                     <video
                       ref={programVideoRef}
-                      src={cameras[selectedSourceCam].videoUrl}
+                      src={cameras.find(c => c.id === selectedSourceCam)?.videoUrl}
                       style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                       playsInline
                     />
-                    <div style={{ position: 'absolute', top: '16px', left: '16px', padding: '8px 12px', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', backgroundColor: cameras[selectedSourceCam].color }}>
-                      {cameras[selectedSourceCam].name}
+                    <div style={{ position: 'absolute', top: '16px', left: '16px', padding: '8px 12px', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', backgroundColor: cameras.find(c => c.id === selectedSourceCam)?.color }}>
+                      {cameras.find(c => c.id === selectedSourceCam)?.name}
                     </div>
                     <div style={{ position: 'absolute', bottom: '16px', left: '16px', backgroundColor: 'rgba(0,0,0,0.8)', padding: '8px 16px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '24px' }}>
                       {formatTime(currentTime)}
@@ -344,10 +456,10 @@ const MultiCamEditor = () => {
             </div>
           </div>
 
-          <div style={{ minHeight: '320px', maxHeight: '400px', backgroundColor: '#1f2937', borderTop: '1px solid #374151', padding: '16px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <div style={{ minHeight: '320px', maxHeight: '400px', backgroundColor: THEME.bgPanel, borderTop: '1px solid #374151', padding: '16px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <h2 style={{ fontSize: '12px', fontWeight: '600', color: '#9ca3af' }}>타임라인</h2>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#9ca3af' }}>타임라인</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginRight: '12px' }}>
                 <button onClick={() => {
                   const newTime = Math.max(0, currentTime - 1);
                   setCurrentTime(newTime);
@@ -369,10 +481,10 @@ const MultiCamEditor = () => {
                 </button>
                 <div style={{ width: '1px', height: '24px', backgroundColor: '#4b5563', margin: '0 8px' }} />
                 <button onClick={setIn} disabled={selectedSourceCam === null} style={{ padding: '8px 12px', backgroundColor: '#059669', borderRadius: '6px', fontSize: '14px', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.5 : 1 }}>
-                  In 설정 [I]
+                  In 설정
                 </button>
                 <button onClick={setOut} disabled={selectedSourceCam === null} style={{ padding: '8px 12px', backgroundColor: '#dc2626', borderRadius: '6px', fontSize: '14px', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.5 : 1 }}>
-                  Out 설정 [O]
+                  Out 설정
                 </button>
                 <button onClick={addClip} disabled={selectedSourceCam === null || inPoint === null || outPoint === null} style={{ padding: '8px 12px', backgroundColor: '#d97706', borderRadius: '6px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', border: 'none', color: 'white', cursor: 'pointer', opacity: (selectedSourceCam === null || inPoint === null || outPoint === null) ? 0.5 : 1 }}>
                   <Plus size={16} />
@@ -383,7 +495,7 @@ const MultiCamEditor = () => {
 
             {selectedSourceCam !== null && (
               <div style={{ marginBottom: '16px' }}>
-                <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>소스 타임라인 - {cameras[selectedSourceCam].name}</div>
+                <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>소스 타임라인 - {cameras.find(c => c.id === selectedSourceCam)?.name}</div>
                 <div style={{ position: 'relative' }}>
                   <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '4px', padding: '0 4px' }}>
                     {[...Array(13)].map((_, i) => (
@@ -395,8 +507,8 @@ const MultiCamEditor = () => {
                     onClick={handleTimelineClick}
                     style={{ position: 'relative', height: '64px', backgroundColor: '#111827', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}
                   >
-                    <div style={{ position: 'absolute', inset: 0, opacity: 0.5, backgroundColor: cameras[selectedSourceCam].color }} />
-                    
+                    <div style={{ position: 'absolute', inset: 0, opacity: 0.5, backgroundColor: cameras.find(c => c.id === selectedSourceCam)?.color }} />
+
                     {savedClips.map((clip) => (
                       <div
                         key={clip.id}
@@ -494,7 +606,7 @@ const MultiCamEditor = () => {
 
             <div style={{ flex: 1 }}>
               <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>편집 타임라인 (저장된 클립)</div>
-              <div style={{ position: 'relative', height: '80%', backgroundColor: '#111827', borderRadius: '8px', padding: '8px', overflowX: 'auto' }}>
+              <div style={{ position: 'relative', height: '120px', backgroundColor: '#111827', borderRadius: '8px', padding: '8px', overflowX: 'auto', minheight: '100px', maxHeight: '160px', overflowY: 'hidden' }}>
                 {savedClips.length === 0 ? (
                   <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', fontSize: '14px' }}>
                     저장된 클립이 없습니다. 소스에서 구간을 선택하고 "클립 추가"를 눌러주세요.
@@ -548,7 +660,7 @@ const MultiCamEditor = () => {
           </div>
         </div>
       </div>
-      
+
       <style>{`
         @keyframes pulse {
           0%, 100% {
