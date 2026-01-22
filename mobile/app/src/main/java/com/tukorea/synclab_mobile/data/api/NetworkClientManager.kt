@@ -8,7 +8,7 @@ import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
 
 object NetworkClient {
-    private const val BASE_URL = "http://10.0.2.2:8000/" // 로컬 컴퓨터(FastAPI) 접속 시 에뮬레이터 주소
+    private const val BASE_URL = "http://10.73.129.64:8000/" // 로컬 컴퓨터(FastAPI) 접속 시 에뮬레이터 주소
 
     private val interceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY // 전송 데이터 전체를 로그로 출력
@@ -17,7 +17,7 @@ object NetworkClient {
     private val client = OkHttpClient.Builder()
         .addInterceptor(interceptor)
         .connectTimeout(30, TimeUnit.SECONDS)
-        .writeTimeout(10, TimeUnit.MINUTES) // 대용량 영상 업로드를 위해 길게 설정
+        .writeTimeout(30, TimeUnit.MINUTES) // 대용량 영상 업로드를 위해 길게 설정
         .readTimeout(30, TimeUnit.SECONDS)
         .build()
 
