@@ -125,6 +125,14 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    dependencies {
+        testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0") // 네트워크 테스트용
+        testImplementation("com.google.code.gson:gson:2.10.1")        // JSON 테스트용
+    }
+    dependencies {
+        testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0")
+        testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.1")
+    }
 
     implementation(platform("androidx.compose:compose-bom:2024.10.00")) // 안정화된 버전 묶음
     implementation("androidx.compose.ui:ui")
