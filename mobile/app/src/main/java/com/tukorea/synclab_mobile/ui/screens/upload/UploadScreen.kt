@@ -22,26 +22,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.navigation.NavController
+import com.google.gson.Gson
+import com.tukorea.synclab_mobile.data.model.VideoMetadata
 import com.tukorea.synclab_mobile.data.repository.UploadRepository
 import com.tukorea.synclab_mobile.utils.VideoFileManager
-import com.tukorea.synclab_mobile.utils.S3Uploader
 import kotlinx.coroutines.launch
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UploadScreen() {
+fun UploadScreen(navController: NavController) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember { UploadRepository() }
 
     var videoFiles by remember { mutableStateOf<List<File>>(emptyList()) }
-    var presignedUrlInput by remember { mutableStateOf(S3Uploader.TEST_URL) }
     var isUploading by remember { mutableStateOf(false) }
     var uploadProgress by remember { mutableFloatStateOf(0f) }
 
-    // URL 수정 모드 여부
-    var isEditMode by remember { mutableStateOf(false) }
+    // --- 삭제 확인 다이얼로그 상태 추가 ---
+    var showDeleteDialog by remember { mutableStateOf(false) }
+    var fileToDelete by remember { mutableStateOf<File?>(null) }
 
     val loadData = {
         videoFiles = VideoFileManager.getVideoFiles(context)
@@ -49,6 +51,37 @@ fun UploadScreen() {
 
     LaunchedEffect(Unit) {
         loadData()
+    }
+
+    // 1. 삭제 확인 다이얼로그 UI
+    if (showDeleteDialog && fileToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { showDeleteDialog = false },
+            title = { Text("영상 삭제", fontWeight = FontWeight.Bold) },
+            text = { Text("'${fileToDelete?.name}' 영상을 삭제하시겠습니까?\n연관된 메타데이터 파일도 함께 삭제됩니다.") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        fileToDelete?.let {
+                            VideoFileManager.deleteFile(it)
+                            loadData()
+                        }
+                        showDeleteDialog = false
+                        fileToDelete = null
+                    }
+                ) {
+                    Text("삭제", color = Color.Red, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = {
+                    showDeleteDialog = false
+                    fileToDelete = null
+                }) {
+                    Text("취소")
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -69,59 +102,21 @@ fun UploadScreen() {
                 .padding(paddingValues)
                 .padding(horizontal = 16.dp)
         ) {
-            // --- [컴팩트 URL 섹션] ---
-            if (!isEditMode) {
-                // 평상시: 짧은 텍스트로 표시
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(vertical = 8.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                        .clickable { isEditMode = true }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(Icons.Default.Link, contentDescription = null, modifier = Modifier.size(16.dp), tint = Color.Gray)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "URL: $presignedUrlInput",
-                        style = TextStyle(fontSize = 11.sp, color = Color.Gray),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Text("수정", fontSize = 11.sp, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                }
-            } else {
-                // 수정 모드: TextField 표시
-                TextField(
-                    value = presignedUrlInput,
-                    onValueChange = { presignedUrlInput = it },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                    textStyle = TextStyle(fontSize = 12.sp),
-                    label = { Text("Presigned URL 수정", fontSize = 10.sp) },
-                    trailingIcon = {
-                        IconButton(onClick = { isEditMode = false }) {
-                            Icon(Icons.Default.Check, contentDescription = "완료", tint = Color.Green)
-                        }
-                    },
-                    singleLine = true
-                )
-            }
-
             if (isUploading) {
                 LinearProgressIndicator(
                     progress = { uploadProgress },
                     modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp))
                 )
-                Text("진행 중... ${(uploadProgress * 100).toInt()}%", fontSize = 10.sp, modifier = Modifier.padding(top = 2.dp))
+                Text(
+                    text = "업로드 중... ${(uploadProgress * 100).toInt()}%",
+                    fontSize = 10.sp,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
             }
 
             Spacer(modifier = Modifier.height(8.dp))
             Text(text = "보관함 영상 (${videoFiles.size})", style = MaterialTheme.typography.titleSmall)
 
-            // --- [영상 목록: 공간 최대 확보] ---
             if (videoFiles.isEmpty()) {
                 Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     Text("저장된 영상이 없습니다.", color = Color.LightGray)
@@ -136,39 +131,44 @@ fun UploadScreen() {
                         VideoFileItem(
                             file = file,
                             onDelete = {
-                                VideoFileManager.deleteFile(file)
-                                loadData()
+                                // 바로 삭제하지 않고 다이얼로그 표시
+                                fileToDelete = file
+                                showDeleteDialog = true
                             },
                             onUpload = {
-                                if (presignedUrlInput.isBlank()) {
-                                    Toast.makeText(context, "URL을 입력해주세요!", Toast.LENGTH_SHORT).show()
-                                    return@VideoFileItem
-                                }
                                 scope.launch {
                                     isUploading = true
                                     uploadProgress = 0f
-                                    val s3Result = repository.uploadVideoToS3(presignedUrlInput, file)
-                                    if (s3Result.isSuccess) {
-                                        uploadProgress = 0.5f
-                                        val jsonFile = File(file.parent, file.nameWithoutExtension + ".json")
-                                        if (jsonFile.exists()) {
-                                            val serverResult = repository.uploadMetadataToServer(jsonFile, file.nameWithoutExtension)
-                                            if (serverResult.isSuccess) {
-                                                uploadProgress = 1.0f
-                                                Toast.makeText(context, "성공!", Toast.LENGTH_SHORT).show()
-                                                VideoFileManager.deleteFile(file)
-                                                if(jsonFile.exists()) jsonFile.delete()
-                                                loadData()
-                                            } else {
-                                                Toast.makeText(context, "서버 등록 실패", Toast.LENGTH_SHORT).show()
-                                            }
-                                        } else {
-                                            uploadProgress = 1.0f
-                                            Toast.makeText(context, "S3 업로드 완료", Toast.LENGTH_SHORT).show()
-                                        }
-                                    } else {
-                                        Toast.makeText(context, "S3 실패", Toast.LENGTH_SHORT).show()
+
+                                    val jsonFile = File(file.parent, file.nameWithoutExtension + ".json")
+                                    if (!jsonFile.exists()) {
+                                        Toast.makeText(context, "메타데이터 파일 없음", Toast.LENGTH_SHORT).show()
+                                        isUploading = false
+                                        return@launch
                                     }
+
+                                    val metadata = try {
+                                        Gson().fromJson(jsonFile.readText(), VideoMetadata::class.java)
+                                    } catch (e: Exception) { null }
+
+                                    if (metadata == null) {
+                                        Toast.makeText(context, "메타데이터 파싱 실패", Toast.LENGTH_SHORT).show()
+                                        isUploading = false
+                                        return@launch
+                                    }
+
+                                    val result = repository.uploadVideoToS3(file, metadata) { progress ->
+                                        uploadProgress = progress
+                                    }
+
+                                    if (result.isSuccess) {
+                                        Toast.makeText(context, "업로드 완료!", Toast.LENGTH_SHORT).show()
+                                        // ✅ 요청하신 대로 업로드 성공 시 자동 삭제 코드(VideoFileManager.deleteFile)를 제거함
+                                        loadData()
+                                    } else {
+                                        Toast.makeText(context, "실패: ${result.exceptionOrNull()?.message}", Toast.LENGTH_LONG).show()
+                                    }
+
                                     isUploading = false
                                 }
                             }
@@ -179,7 +179,6 @@ fun UploadScreen() {
         }
     }
 }
-
 @Composable
 fun VideoFileItem(
     file: File,
@@ -187,22 +186,52 @@ fun VideoFileItem(
     onUpload: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
         Row(
-            modifier = Modifier.padding(10.dp),
+            modifier = Modifier
+                .padding(12.dp)
+                .fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // 파일 정보 섹션
             Column(modifier = Modifier.weight(1f)) {
-                Text(text = file.name, fontWeight = FontWeight.Medium, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(text = "${String.format("%.1f", file.length() / (1024.0 * 1024.0))} MB", fontSize = 11.sp, color = Color.Gray)
+                Text(
+                    text = file.name,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "${String.format("%.1f", file.length() / (1024.0 * 1024.0))} MB",
+                    fontSize = 12.sp,
+                    color = Color.Gray
+                )
             }
-            IconButton(onClick = onUpload, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.CloudUpload, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+
+            // 업로드 버튼
+            IconButton(onClick = onUpload) {
+                Icon(
+                    imageVector = Icons.Default.CloudUpload,
+                    contentDescription = "업로드",
+                    tint = MaterialTheme.colorScheme.primary
+                )
             }
-            IconButton(onClick = onDelete, modifier = Modifier.size(36.dp)) {
-                Icon(Icons.Default.Delete, contentDescription = null, tint = Color.Red, modifier = Modifier.size(20.dp))
+
+            // 삭제 버튼
+            IconButton(onClick = onDelete) {
+                Icon(
+                    imageVector = Icons.Default.Delete,
+                    contentDescription = "삭제",
+                    tint = Color.Red
+                )
             }
         }
     }

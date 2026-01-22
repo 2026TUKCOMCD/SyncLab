@@ -2,88 +2,104 @@ package com.tukorea.synclab_mobile.data.repository
 
 import android.util.Log
 import com.tukorea.synclab_mobile.api.NetworkClient
-import com.tukorea.synclab_mobile.data.api.VidoeUploadService // 인터페이스 임포트 확인
+import com.tukorea.synclab_mobile.data.api.VidoeUploadService
+import com.tukorea.synclab_mobile.data.model.CompleteUploadRequest
+import com.tukorea.synclab_mobile.data.model.VideoMetadata
+import com.tukorea.synclab_mobile.utils.S3Uploader
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-import okhttp3.MediaType.Companion.toMediaTypeOrNull
-import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
-import okhttp3.Request
-import okhttp3.RequestBody.Companion.asRequestBody
-import okhttp3.RequestBody.Companion.toRequestBody
 import java.io.File
 import java.util.concurrent.TimeUnit
 
 class UploadRepository {
-
     private val api: VidoeUploadService = NetworkClient.service
 
     private val s3Client = OkHttpClient.Builder()
-        .connectTimeout(120, TimeUnit.SECONDS)
-        .writeTimeout(600, TimeUnit.SECONDS) // 영상 업로드는 시간을 넉넉히 (10분)
-        .readTimeout(120, TimeUnit.SECONDS)
+        .connectTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(120, TimeUnit.SECONDS)
         .build()
 
-    // [Step 1] 함수명 유지: S3 직접 업로드
-    // 이제 presignedUrl을 밖에서 넣어줄 필요 없이 내부에서 노트북 서버를 통해 받아옵니다.
-    suspend fun uploadVideoToS3(unusedUrl: String, videoFile: File): Result<Unit> {
+    private val CHUNK_SIZE = 5 * 1024 * 1024L // 5MB
+    private val MAX_RETRIES = 3 // P0: 최대 재시도 횟수
+
+    /**
+     * S3 분할 업로드를 수행하고, 완료 시 메타데이터를 함께 등록합니다.
+     * @param onProgress: (Float) -> Unit 형태의 콜백 함수 추가 (0.0 ~ 1.0 전달)
+     */
+    suspend fun uploadVideoToS3(
+        videoFile: File,
+        metadata: VideoMetadata,
+        onProgress: (Float) -> Unit // 실시간 진행률 보고를 위한 콜백 추가
+    ): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
-                if (!videoFile.exists()) {
-                    return@withContext Result.failure(Exception("파일이 존재하지 않습니다."))
-                }
+                if (!videoFile.exists()) return@withContext Result.failure(Exception("파일 없음"))
 
-                // 1. 노트북 파이썬 서버 호출하여 진짜 S3 URL 받아오기
-                Log.d("S3_UPLOAD", "노트북 서버에 URL 요청 중: ${videoFile.name}")
-                val urlResponse = api.getPresignedUrl(videoFile.name)
-                val realPresignedUrl = urlResponse["url"]
-                    ?: return@withContext Result.failure(Exception("URL 획득 실패"))
+                // 1. [단계 1] 서버에 분할 업로드 시작 요청
+                val chunkCount = Math.ceil(videoFile.length().toDouble() / CHUNK_SIZE).toInt()
+                val initResponse = api.initMultipartUpload(videoFile.name, chunkCount)
+                val uploadId = initResponse.uploadId
+                val presignedUrls = initResponse.presignedUrls
 
-                // 2. 받아온 진짜 URL로 S3에 파일 전송 (PUT 방식)
-                val requestBody = videoFile.asRequestBody("video/mp4".toMediaTypeOrNull())
-                val request = Request.Builder()
-                    .url(realPresignedUrl)
-                    .put(requestBody) // 💡 반드시 .put() 이어야 합니다! GET은 안 돼요.
-                    .addHeader("Content-Type", "video/mp4")
-                    .build()
+                val etags = mutableListOf<String>()
 
-                Log.d("S3_UPLOAD", "S3로 실제 업로드 시작...")
+                // 2. [단계 2] 각 조각(Part) 업로드 수행
+                for (i in 0 until chunkCount) {
+                    val offset = i * CHUNK_SIZE
+                    val currentPartSize = Math.min(CHUNK_SIZE, videoFile.length() - offset)
 
-                s3Client.newCall(request).execute().use { response ->
-                    if (response.isSuccessful) {
-                        Log.d("S3_UPLOAD", "S3 업로드 최종 성공!")
-                        Result.success(Unit)
-                    } else {
-                        val errorBody = response.body?.string() ?: ""
-                        Log.e("S3_UPLOAD", "S3 응답 에러: $errorBody")
-                        Result.failure(Exception("S3 업로드 실패: ${response.code}"))
+                    var retryCount = 0
+                    var successEtag: String? = null
+
+                    // P0: 재시도 로직
+                    while (retryCount < MAX_RETRIES) {
+                        successEtag = S3Uploader.uploadPart(
+                            partUrl = presignedUrls[i],
+                            file = videoFile,
+                            partNumber = i + 1,
+                            offset = offset,
+                            partSize = currentPartSize
+                        )
+
+                        if (successEtag != null) break
+
+                        retryCount++
+                        delay(2000)
+                    }
+
+                    if (successEtag == null) {
+                        return@withContext Result.failure(Exception("${i + 1}번째 조각 최종 실패"))
+                    }
+
+                    etags.add(successEtag)
+
+                    // ✅ [콜백 역할] 조각 하나 성공할 때마다 진행률 계산하여 UI에 전달
+                    val progress = (i + 1).toFloat() / chunkCount
+                    withContext(Dispatchers.Main) {
+                        onProgress(progress) // UI 스레드에서 콜백 실행
                     }
                 }
+
+                // 3. [단계 3] 완료 보고 및 메타데이터 통합 등록 [cite: 6]
+                val completeRequest = CompleteUploadRequest(
+                    uploadId = uploadId,
+                    videoName = videoFile.name,
+                    etags = etags,
+                    metadata = metadata
+                )
+
+                val response = api.completeAndRegister(completeRequest)
+
+                if (response.isSuccessful) {
+                    Result.success(Unit)
+                } else {
+                    Result.failure(Exception("서버 처리 실패: ${response.code()}"))
+                }
             } catch (e: Exception) {
-                Log.e("S3_UPLOAD", "예외 발생", e)
                 Result.failure(e)
             }
-        }
-    }
-
-    // [Step 2] 함수명 유지: 서버 메타데이터 등록
-    suspend fun uploadMetadataToServer(jsonFile: File, videoId: String): Result<Unit> {
-        return try {
-            val jsonRequestBody = jsonFile.asRequestBody("application/json".toMediaTypeOrNull())
-            val jsonPart = MultipartBody.Part.createFormData("metadata", jsonFile.name, jsonRequestBody)
-            val videoIdBody = videoId.toRequestBody("text/plain".toMediaTypeOrNull())
-
-            val response = api.registerVideoMetadata(jsonPart, videoIdBody)
-
-            if (response.isSuccessful) {
-                Log.d("UPLOAD_REPO", "서버 메타데이터 등록 성공")
-                Result.success(Unit)
-            } else {
-                Result.failure(Exception("서버 에러: ${response.code()}"))
-            }
-        } catch (e: Exception) {
-            Log.e("UPLOAD_REPO", "메타데이터 등록 중 예외 발생: ${e.message}")
-            Result.failure(e)
         }
     }
 }

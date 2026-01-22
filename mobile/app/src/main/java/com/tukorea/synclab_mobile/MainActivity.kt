@@ -119,9 +119,9 @@ fun MainAppScaffold() {
                 }
             }
 
-            // *** 수정된 부분: PlaceholderScreen을 UploadScreen()으로 교체 ***
             composable(Screen.Upload.route) {
-                UploadScreen()
+                // UploadScreen도 navController를 인자로 받을 수 있게 수정해야 합니다.
+                UploadScreen(navController = navController)
             }
 
             composable(Screen.Settings.route) { PlaceholderScreen("환경 설정") }
