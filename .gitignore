@@ -26,3 +26,5 @@ yarn-error.log*
 previewConfig.json
 
 venv/
+package-lock.json
+package.json

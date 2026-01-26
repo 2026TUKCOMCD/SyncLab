@@ -1,5 +1,9 @@
 package com.tukorea.synclab_mobile.ui.screens.home
 
+import android.util.Log
+import android.widget.Toast
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -13,22 +17,59 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tukorea.synclab_mobile.data.model.SessionInfo
 import com.tukorea.synclab_mobile.data.model.VideoStatus
+import kotlinx.coroutines.delay
 
 @Composable
 fun HomeScreen(
-    // 🔴 에러 해결 핵심: 파라미터를 비워야 MainActivity에서 HomeScreen()으로 호출 가능합니다.
     viewModel: HomeViewModel = androidx.lifecycle.viewmodel.compose.viewModel()
 ) {
     // 팝업 상태 관리
     var showCreateDialog by remember { mutableStateOf(false) }
     var showJoinDialog by remember { mutableStateOf(false) }
     var joinCodeInput by remember { mutableStateOf("") }
+
+    val context = LocalContext.current
+    var backPressedTime by remember { mutableLongStateOf(0L) }
+
+    BackHandler {
+        val currentTime = System.currentTimeMillis()
+        if (currentTime - backPressedTime < 2000) {
+            // 2초 안에 다시 누르면 앱 종료
+            (context as? ComponentActivity)?.finish()
+        } else {
+            backPressedTime = currentTime
+            Toast.makeText(context, "한 번 더 누르면 종료됩니다.", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    // --- 🔴 영상 처리 상태 자동 갱신 로직 ---
+    // recentVideos 리스트에 "PROCESSING" 상태인 영상이 하나라도 있으면 5초마다 새로고침합니다.
+    LaunchedEffect(viewModel.recentVideos) {
+        val hasProcessingVideo = viewModel.recentVideos.any { it.status == "PROCESSING" }
+
+        if (hasProcessingVideo) {
+            while (true) {
+                delay(5000) // 5초 대기
+                try {
+                    viewModel.refreshVideoStatus() // ViewModel에서 서버 데이터 호출
+                } catch (e: Exception) {
+                    Log.e("HomeScreen", "자동 갱신 중 에러: ${e.message}")
+                }
+
+                // 모든 영상이 완료(COMPLETED)되면 루프 종료
+                if (viewModel.recentVideos.all { it.status == "COMPLETED" }) {
+                    break
+                }
+            }
+        }
+    }
 
     // --- 1. 세션 생성 확인 팝업 ---
     if (showCreateDialog) {
@@ -99,8 +140,8 @@ fun HomeScreen(
         item {
             CurrentSessionCard(
                 session = viewModel.currentSession,
-                onCreate = { showCreateDialog = true }, // 내부 팝업 띄우기
-                onJoin = { showJoinDialog = true },     // 내부 팝업 띄우기
+                onCreate = { showCreateDialog = true },
+                onJoin = { showJoinDialog = true },
                 onExit = { viewModel.clearSession() }
             )
         }

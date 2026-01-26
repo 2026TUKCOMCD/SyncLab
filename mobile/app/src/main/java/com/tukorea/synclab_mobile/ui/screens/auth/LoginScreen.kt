@@ -26,7 +26,7 @@ fun LoginScreen(
     // 입력값을 저장할 상태 변수
     var userId by remember { mutableStateOf("") }
     var userPw by remember { mutableStateOf("") }
-
+    var isProcessing by remember { mutableStateOf(false) }
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
@@ -74,12 +74,12 @@ fun LoginScreen(
 
             // 로그인 버튼
             Button(
+                enabled = !isProcessing, // 🔴 처리 중일 때는 버튼 비활성화
                 onClick = {
-                    // 26일 임시 계정 확인 로직 적용
                     if (userId == "111" && userPw == "111") {
-                        onLoginSuccess() // 성공 시 MainActivity의 네비게이션 실행
+                        isProcessing = true // 상태 변경
+                        onLoginSuccess()
                     } else {
-                        // 실패 시 사용자에게 알림
                         Toast.makeText(context, "아이디 또는 비밀번호가 틀렸습니다.", Toast.LENGTH_SHORT).show()
                     }
                 },
@@ -88,7 +88,11 @@ fun LoginScreen(
                     .height(55.dp),
                 shape = MaterialTheme.shapes.medium
             ) {
-                Text(text = "로그인", fontSize = 18.sp)
+                if (isProcessing) {
+                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                } else {
+                    Text(text = "로그인", fontSize = 18.sp)
+                }
             }
 
             Spacer(modifier = Modifier.height(15.dp))
@@ -99,6 +103,7 @@ fun LoginScreen(
             }) {
                 Text(text = "계정이 없으신가요? 회원가입", color = Color.Gray)
             }
+
         }
     }
 }
