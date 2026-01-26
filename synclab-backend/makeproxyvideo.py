@@ -90,7 +90,7 @@ async def create_proxy_video(original_key: str):
             acodec='aac',
             video_bitrate='1M',
             audio_bitrate='128k',
-            s='854x480',
+            vf='scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2', 
             preset='fast',
             crf=23,
             movflags='faststart'
@@ -229,4 +229,4 @@ if __name__ == "__main__":
     print(f"   프록시 버킷: {S3_BUCKET_PROXY}")
     print(f"   임시 저장: {TEMP_DIR}")
     print("="*60)
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
