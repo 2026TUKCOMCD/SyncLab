@@ -1,7 +1,6 @@
 package com.tukorea.synclab_mobile
 
 import android.os.Bundle
-import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -26,8 +25,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.tukorea.synclab_mobile.ui.components.PermissionRequestScreen
+import com.tukorea.synclab_mobile.ui.components.PlaceholderScreen
+import com.tukorea.synclab_mobile.ui.screens.auth.LoginScreen // 추가됨
+import com.tukorea.synclab_mobile.ui.screens.home.HomeScreen
 import com.tukorea.synclab_mobile.ui.screens.record.RecordScreen
-import com.tukorea.synclab_mobile.ui.screens.upload.UploadScreen // 추가됨
+import com.tukorea.synclab_mobile.ui.screens.upload.UploadScreen
 import com.tukorea.synclab_mobile.ui.theme.SyncLab_MobileTheme
 import com.tukorea.synclab_mobile.utils.PermissionHelper
 import com.tukorea.synclab_mobile.utils.NtpSyncManager
@@ -59,7 +62,11 @@ class MainActivity : ComponentActivity() {
 fun MainAppScaffold() {
     val navController = rememberNavController()
     val context = LocalContext.current
-    val scope = rememberCoroutineScope()
+
+    // 현재 경로를 감시하여 하단 바 표시 여부 결정
+    val navBackStackEntry by navController.currentBackStackEntryAsState()
+    val currentDestination = navBackStackEntry?.destination
+    val showBottomBar = currentDestination?.route != "login"
 
     LaunchedEffect(Unit) {
         NtpSyncManager.checkAndSync(isRecording = false)
@@ -79,36 +86,49 @@ fun MainAppScaffold() {
 
     Scaffold(
         bottomBar = {
-            NavigationBar {
-                val navBackStackEntry by navController.currentBackStackEntryAsState()
-                val currentDestination = navBackStackEntry?.destination
-
-                screens.forEach { screen ->
-                    NavigationBarItem(
-                        icon = { Icon(screen.icon, contentDescription = screen.label) },
-                        label = { Text(screen.label) },
-                        selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
-                        onClick = {
-                            navController.navigate(screen.route) {
-                                popUpTo(navController.graph.findStartDestination().id) {
-                                    saveState = true
+            // 로그인 화면이 아닐 때만 하단 바를 보여줍니다.
+            if (showBottomBar) {
+                NavigationBar {
+                    screens.forEach { screen ->
+                        NavigationBarItem(
+                            icon = { Icon(screen.icon, contentDescription = screen.label) },
+                            label = { Text(screen.label) },
+                            selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
+                            onClick = {
+                                navController.navigate(screen.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
                             }
-                        }
-                    )
+                        )
+                    }
                 }
             }
         }
     ) { innerPadding ->
         NavHost(
             navController = navController,
-            startDestination = Screen.Home.route,
+            startDestination = "login", // 시작 화면을 로그인으로 설정
             modifier = Modifier.padding(innerPadding)
         ) {
-            composable(Screen.Home.route) { PlaceholderScreen("SyncLab 메인 화면") }
+            // --- 로그인 경로 추가 ---
+            composable("login") {
+                LoginScreen(
+                    onLoginSuccess = {
+                        // 로그인 성공 시 홈으로 이동하고 로그인 화면은 스택에서 제거
+                        navController.navigate(Screen.Home.route) {
+                            popUpTo("login") { inclusive = true }
+                        }
+                    }
+                )
+            }
 
+            composable(Screen.Home.route) {
+                HomeScreen()
+            }
             composable(Screen.Record.route) {
                 if (isPermissionGranted) {
                     RecordScreen(navController = navController)
@@ -120,7 +140,6 @@ fun MainAppScaffold() {
             }
 
             composable(Screen.Upload.route) {
-                // UploadScreen도 navController를 인자로 받을 수 있게 수정해야 합니다.
                 UploadScreen(navController = navController)
             }
 
@@ -129,22 +148,4 @@ fun MainAppScaffold() {
     }
 }
 
-@Composable
-fun PermissionRequestScreen(onRequest: () -> Unit) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text("녹화 기능을 위해 카메라와 마이크 권한이 필요합니다.")
-            Spacer(modifier = Modifier.padding(8.dp))
-            Button(onClick = onRequest) {
-                Text("권한 허용하기")
-            }
-        }
-    }
-}
-
-@Composable
-fun PlaceholderScreen(text: String) {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = text, textAlign = TextAlign.Center, style = MaterialTheme.typography.headlineSmall)
-    }
-}
+// 나머지 PermissionRequestScreen, PlaceholderScreen 코드는 동일
