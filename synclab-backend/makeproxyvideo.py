@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from botocore.config import Config
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List , Optional
 from datetime import datetime
 
 app = FastAPI()
@@ -36,6 +36,20 @@ s3_client = boto3.client(
     aws_secret_access_key='YOUR_SECRET_KEY',  # ⚠️ 본인 키 입력
     config=Config(signature_version='s3v4')
 )
+
+# ============================================
+# 임시 DB (세션 기능)
+# ============================================
+fake_db = {
+    "current_session": None,
+    "history": [
+        {"sessionId": "HIST-001", "sessionName": "1차 필드 테스트", "createdAt": "2026-01-20", "participantCount": 2},
+        {"sessionId": "HIST-002", "sessionName": "연구실 실내 측정", "createdAt": "2026-01-22", "participantCount": 5}
+    ],
+    "videos": []
+}
+
+
 
 # 데이터 모델
 class VideoMetadata(BaseModel):
@@ -223,6 +237,155 @@ async def check_proxy_exists(filename: str):
         return {"status": "error", "message": str(e)}
 
 
+# ============================================
+# 세션 관련 API (추가된 부분!)
+# ============================================
+
+@app.post("/api/auth/login")
+async def login(request: LoginRequest):
+    """로그인"""
+    if request.userId == "111" and request.userPw == "111":
+        return {"status": "success", "message": "로그인 성공", "userName": "테스트 관리자"}
+    raise HTTPException(status_code=401, detail="인증 실패")
+
+
+@app.get("/api/home/data")
+async def get_home_data():
+    """홈 데이터 조회 (현재 세션 + 히스토리)"""
+    return fake_db
+
+
+@app.post("/api/session/create")
+async def create_session(request: SessionActionRequest):
+    """새로운 세션 생성"""
+    new_session = {
+        "sessionId": f"SESS-{datetime.now().strftime('%H%M%S')}",
+        "sessionName": request.name or "새로운 세션",
+        "createdAt": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "participantCount": 1
+    }
+    fake_db["current_session"] = new_session
+    return {"status": "success", "session": new_session}
+
+
+@app.post("/api/session/join")
+async def join_session(request: SessionActionRequest):
+    """기존 세션 참가"""
+    joined_session = {
+        "sessionId": request.sessionId or "SESS-JOINED",
+        "sessionName": "참가된 협업 세션",
+        "createdAt": datetime.now().strftime("%Y-%m-%d"),
+        "participantCount": 4
+    }
+    fake_db["current_session"] = joined_session
+    return {"status": "success", "session": joined_session}
+
+
+@app.get("/api/video/status")
+async def get_video_status():
+    """영상 처리 상태 조회"""
+    for video in fake_db["videos"]:
+        if video["status"] == "PROCESSING":
+            video["status"] = "COMPLETED"
+    return fake_db["videos"]
+
+
+# ============================================
+# 영상 업로드 API
+# ============================================
+
+@app.get("/api/video/upload/init")
+def init_upload(filename: str, partCount: int):
+    """[단계 1] S3 멀티파트 업로드 시작"""
+    response = s3_client.create_multipart_upload(
+        Bucket=S3_BUCKET_ORIGINAL,
+        Key=filename,
+        ContentType='video/mp4'
+    )
+    upload_id = response['UploadId']
+
+    presigned_urls = [
+        s3_client.generate_presigned_url(
+            ClientMethod='upload_part',
+            Params={
+                'Bucket': S3_BUCKET_ORIGINAL,
+                'Key': filename,
+                'UploadId': upload_id,
+                'PartNumber': i
+            },
+            ExpiresIn=3600
+        ) for i in range(1, partCount + 1)
+    ]
+        
+    return {"uploadId": upload_id, "presignedUrls": presigned_urls}
+
+
+@app.post("/api/video/upload/complete")
+async def complete_upload(
+    request: CompleteUploadRequest,
+    background_tasks: BackgroundTasks
+):
+    """[단계 2] S3 조각 병합 및 프록시 영상 생성"""
+    try:
+        # 1. S3 병합
+        parts = [{"PartNumber": i + 1, "ETag": etag} for i, etag in enumerate(request.etags)]
+        
+        s3_client.complete_multipart_upload(
+            Bucket=S3_BUCKET_ORIGINAL,
+            Key=request.videoName,
+            UploadId=request.uploadId,
+            MultipartUpload={'Parts': parts}
+        )
+        
+        print(f"\n✅ [원본 업로드 완료] {request.videoName}")
+        print(f"   시작 시간: {request.metadata.absoluteStartTime}")
+        print(f"   재생 길이: {request.metadata.duration}초")
+        
+        # 2. DB에 비디오 추가
+        new_video = {
+            "videoId": f"VID-{datetime.now().strftime('%M%S')}",
+            "fileName": request.videoName,
+            "status": "PROCESSING",
+            "timestamp": int(datetime.now().timestamp())
+        }
+        fake_db["videos"].insert(0, new_video)
+        
+        # 3. 백그라운드에서 프록시 생성
+        background_tasks.add_task(create_proxy_video, request.videoName)
+        
+        return {
+            "status": "success",
+            "message": "원본 업로드 완료. 프록시 생성 중...",
+            "original_url": f"https://{S3_BUCKET_ORIGINAL}.s3.{REGION_NAME}.amazonaws.com/{request.videoName}"
+        }
+
+    except Exception as e:
+        print(f"\n❌ [에러] {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/api/video/proxy/check/{filename}")
+async def check_proxy_exists(filename: str):
+    """프록시 영상 존재 여부 확인"""
+    proxy_key = filename.replace(".mp4", "_proxy.mp4")
+    
+    try:
+        response = s3_client.head_object(Bucket=S3_BUCKET_PROXY, Key=proxy_key)
+        
+        return {
+            "status": "completed",
+            "proxy_url": f"https://{S3_BUCKET_PROXY}.s3.{REGION_NAME}.amazonaws.com/{proxy_key}",
+            "file_size_mb": round(response['ContentLength'] / (1024 * 1024), 2)
+        }
+    except s3_client.exceptions.NoSuchKey:
+        return {"status": "not_found"}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+
+# ============================================
+# 서버 실행
+# ============================================
 if __name__ == "__main__":
     print("🚀 SyncLab FastAPI 서버 시작!")
     print(f"   원본 버킷: {S3_BUCKET_ORIGINAL}")
