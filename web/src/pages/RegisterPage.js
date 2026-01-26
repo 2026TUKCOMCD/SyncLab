@@ -20,7 +20,7 @@ function RegisterPage() {
 
         try{
             const response = await axios.post('/api/users/signup', {
-                user_id: formData.id,
+                id: formData.id,
                 password: formData.password
             });
             if(response.status == 200){
