@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from botocore.config import Config
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List , Optional
+from typing import List, Optional
 from datetime import datetime
 
 app = FastAPI()
@@ -22,7 +22,7 @@ app.add_middleware(
 
 # S3 설정
 S3_BUCKET_ORIGINAL = "synclab-1080p-mp4"  # 원본 버킷
-S3_BUCKET_PROXY = "synclab-480p-mp4"      # 프록시 버킷 (생성 필요!)
+S3_BUCKET_PROXY = "synclab-480p-mp4"      # 프록시 버킷
 REGION_NAME = "ap-northeast-2"
 
 # 임시 파일 저장 경로
@@ -32,10 +32,11 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 s3_client = boto3.client(
     's3',
     region_name=REGION_NAME,
-    aws_access_key_id='YOUR_ACCESS_KEY',      # ⚠️ 본인 키 입력
-    aws_secret_access_key='YOUR_SECRET_KEY',  # ⚠️ 본인 키 입력
+    aws_access_key_id='입력란',
+    aws_secret_access_key='입력란',
     config=Config(signature_version='s3v4')
 )
+
 
 # ============================================
 # 임시 DB (세션 기능)
@@ -50,10 +51,19 @@ fake_db = {
 }
 
 
-
+# ============================================
 # 데이터 모델
+# ============================================
+class LoginRequest(BaseModel):
+    userId: str
+    userPw: str
+
+class SessionActionRequest(BaseModel):
+    name: Optional[str] = None
+    sessionId: Optional[str] = None
+
 class VideoMetadata(BaseModel):
-    videoName: str
+    videoName: str  # ✅ 수정: strs → str
     fileName: str
     absoluteStartTime: int
     absoluteEndTime: int
@@ -67,9 +77,8 @@ class CompleteUploadRequest(BaseModel):
 
 
 # ============================================
-# 프록시 영상 생성 함수 (핵심 추가 부분!)
+# 프록시 영상 생성 함수
 # ============================================
-
 async def create_proxy_video(original_key: str):
     """S3에서 원본 다운로드 → FFmpeg 변환 → 프록시 업로드"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -104,7 +113,7 @@ async def create_proxy_video(original_key: str):
             acodec='aac',
             video_bitrate='1M',
             audio_bitrate='128k',
-            vf='scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2', 
+            vf='scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2',
             preset='fast',
             crf=23,
             movflags='faststart'
@@ -154,93 +163,8 @@ async def create_proxy_video(original_key: str):
 
 
 # ============================================
-# API 엔드포인트
+# 세션 관련 API
 # ============================================
-
-@app.get("/api/video/upload/init")
-def init_upload(filename: str, partCount: int):
-    """[단계 1] S3 멀티파트 업로드 시작"""
-    response = s3_client.create_multipart_upload(
-        Bucket=S3_BUCKET_ORIGINAL,
-        Key=filename,
-        ContentType='video/mp4'
-    )
-    upload_id = response['UploadId']
-
-    presigned_urls = [
-        s3_client.generate_presigned_url(
-            ClientMethod='upload_part',
-            Params={
-                'Bucket': S3_BUCKET_ORIGINAL,
-                'Key': filename,
-                'UploadId': upload_id,
-                'PartNumber': i
-            },
-            ExpiresIn=3600
-        ) for i in range(1, partCount + 1)
-    ]
-        
-    return {"uploadId": upload_id, "presignedUrls": presigned_urls}
-
-
-@app.post("/api/video/upload/complete")
-async def complete_upload(
-    request: CompleteUploadRequest,
-    background_tasks: BackgroundTasks  # 🔑 이게 추가됨!
-):
-    """[단계 2] S3 조각 병합 및 프록시 영상 생성"""
-    try:
-        # 1. S3 병합
-        parts = [{"PartNumber": i + 1, "ETag": etag} for i, etag in enumerate(request.etags)]
-        
-        s3_client.complete_multipart_upload(
-            Bucket=S3_BUCKET_ORIGINAL,
-            Key=request.videoName,
-            UploadId=request.uploadId,
-            MultipartUpload={'Parts': parts}
-        )
-        
-        print(f"\n✅ [원본 업로드 완료] {request.videoName}")
-        print(f"   시작 시간: {request.metadata.absoluteStartTime}")
-        print(f"   재생 길이: {request.metadata.duration}초")
-        
-        # 2. 백그라운드에서 프록시 생성 🔑 이게 추가됨!
-        background_tasks.add_task(create_proxy_video, request.videoName)
-        
-        return {
-            "status": "success",
-            "message": "원본 업로드 완료. 프록시 생성 중...",
-            "original_url": f"https://{S3_BUCKET_ORIGINAL}.s3.{REGION_NAME}.amazonaws.com/{request.videoName}"
-        }
-
-    except Exception as e:
-        print(f"\n❌ [에러] {str(e)}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/api/video/proxy/check/{filename}")
-async def check_proxy_exists(filename: str):
-    """프록시 영상 존재 여부 확인"""
-    proxy_key = filename.replace(".mp4", "_proxy.mp4")
-    
-    try:
-        response = s3_client.head_object(Bucket=S3_BUCKET_PROXY, Key=proxy_key)
-        
-        return {
-            "status": "completed",
-            "proxy_url": f"https://{S3_BUCKET_PROXY}.s3.{REGION_NAME}.amazonaws.com/{proxy_key}",
-            "file_size_mb": round(response['ContentLength'] / (1024 * 1024), 2)
-        }
-    except s3_client.exceptions.NoSuchKey:
-        return {"status": "not_found"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-
-# ============================================
-# 세션 관련 API (추가된 부분!)
-# ============================================
-
 @app.post("/api/auth/login")
 async def login(request: LoginRequest):
     """로그인"""
@@ -293,7 +217,6 @@ async def get_video_status():
 # ============================================
 # 영상 업로드 API
 # ============================================
-
 @app.get("/api/video/upload/init")
 def init_upload(filename: str, partCount: int):
     """[단계 1] S3 멀티파트 업로드 시작"""
@@ -387,7 +310,9 @@ async def check_proxy_exists(filename: str):
 # 서버 실행
 # ============================================
 if __name__ == "__main__":
-    print("🚀 SyncLab FastAPI 서버 시작!")
+    print("╔════════════════════════════════════════╗")
+    print("║   🚀 SyncLab FastAPI 서버 시작        ║")
+    print("╚════════════════════════════════════════╝")
     print(f"   원본 버킷: {S3_BUCKET_ORIGINAL}")
     print(f"   프록시 버킷: {S3_BUCKET_PROXY}")
     print(f"   임시 저장: {TEMP_DIR}")
