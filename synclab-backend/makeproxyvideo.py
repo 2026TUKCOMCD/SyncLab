@@ -6,7 +6,7 @@ from fastapi import FastAPI, HTTPException, BackgroundTasks
 from botocore.config import Config
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from datetime import datetime
 
 app = FastAPI()
@@ -22,7 +22,7 @@ app.add_middleware(
 
 # S3 설정
 S3_BUCKET_ORIGINAL = "synclab-1080p-mp4"  # 원본 버킷
-S3_BUCKET_PROXY = "synclab-480p-mp4"      # 프록시 버킷 (생성 필요!)
+S3_BUCKET_PROXY = "synclab-480p-mp4"      # 프록시 버킷
 REGION_NAME = "ap-northeast-2"
 
 # 임시 파일 저장 경로
@@ -32,14 +32,38 @@ os.makedirs(TEMP_DIR, exist_ok=True)
 s3_client = boto3.client(
     's3',
     region_name=REGION_NAME,
-    aws_access_key_id='YOUR_ACCESS_KEY',      # ⚠️ 본인 키 입력
-    aws_secret_access_key='YOUR_SECRET_KEY',  # ⚠️ 본인 키 입력
+    aws_access_key_id='입력란',
+    aws_secret_access_key='입력란',
     config=Config(signature_version='s3v4')
 )
 
+
+# ============================================
+# 임시 DB (세션 기능)
+# ============================================
+fake_db = {
+    "current_session": None,
+    "history": [
+        {"sessionId": "HIST-001", "sessionName": "1차 필드 테스트", "createdAt": "2026-01-20", "participantCount": 2},
+        {"sessionId": "HIST-002", "sessionName": "연구실 실내 측정", "createdAt": "2026-01-22", "participantCount": 5}
+    ],
+    "videos": []
+}
+
+
+# ============================================
 # 데이터 모델
+# ============================================
+class LoginRequest(BaseModel):
+    userId: str
+    userPw: str
+
+class SessionActionRequest(BaseModel):
+    name: Optional[str] = None
+    sessionId: Optional[str] = None
+
 class VideoMetadata(BaseModel):
-    videoName: str
+    videoName: str  # ✅ 수정: strs → str
     fileName: str
     absoluteStartTime: int
     absoluteEndTime: int
@@ -53,9 +77,8 @@ class CompleteUploadRequest(BaseModel):
 
 
 # ============================================
-# 프록시 영상 생성 함수 (핵심 추가 부분!)
+# 프록시 영상 생성 함수
 # ============================================
-
 async def create_proxy_video(original_key: str):
     """S3에서 원본 다운로드 → FFmpeg 변환 → 프록시 업로드"""
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -90,7 +113,7 @@ async def create_proxy_video(original_key: str):
             acodec='aac',
             video_bitrate='1M',
             audio_bitrate='128k',
-            s='854x480',
+            vf='scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2',
             preset='fast',
             crf=23,
             movflags='faststart'
@@ -140,9 +163,60 @@ async def create_proxy_video(original_key: str):
 
 
 # ============================================
-# API 엔드포인트
+# 세션 관련 API
 # ============================================
+@app.post("/api/auth/login")
+async def login(request: LoginRequest):
+    """로그인"""
+    if request.userId == "111" and request.userPw == "111":
+        return {"status": "success", "message": "로그인 성공", "userName": "테스트 관리자"}
+    raise HTTPException(status_code=401, detail="인증 실패")
 
+
+@app.get("/api/home/data")
+async def get_home_data():
+    """홈 데이터 조회 (현재 세션 + 히스토리)"""
+    return fake_db
+
+
+@app.post("/api/session/create")
+async def create_session(request: SessionActionRequest):
+    """새로운 세션 생성"""
+    new_session = {
+        "sessionId": f"SESS-{datetime.now().strftime('%H%M%S')}",
+        "sessionName": request.name or "새로운 세션",
+        "createdAt": datetime.now().strftime("%Y-%m-%d %H:%M"),
+        "participantCount": 1
+    }
+    fake_db["current_session"] = new_session
+    return {"status": "success", "session": new_session}
+
+
+@app.post("/api/session/join")
+async def join_session(request: SessionActionRequest):
+    """기존 세션 참가"""
+    joined_session = {
+        "sessionId": request.sessionId or "SESS-JOINED",
+        "sessionName": "참가된 협업 세션",
+        "createdAt": datetime.now().strftime("%Y-%m-%d"),
+        "participantCount": 4
+    }
+    fake_db["current_session"] = joined_session
+    return {"status": "success", "session": joined_session}
+
+
+@app.get("/api/video/status")
+async def get_video_status():
+    """영상 처리 상태 조회"""
+    for video in fake_db["videos"]:
+        if video["status"] == "PROCESSING":
+            video["status"] = "COMPLETED"
+    return fake_db["videos"]
+
+
+# ============================================
+# 영상 업로드 API
+# ============================================
 @app.get("/api/video/upload/init")
 def init_upload(filename: str, partCount: int):
     """[단계 1] S3 멀티파트 업로드 시작"""
@@ -172,7 +246,7 @@ def init_upload(filename: str, partCount: int):
 @app.post("/api/video/upload/complete")
 async def complete_upload(
     request: CompleteUploadRequest,
-    background_tasks: BackgroundTasks  # 🔑 이게 추가됨!
+    background_tasks: BackgroundTasks
 ):
     """[단계 2] S3 조각 병합 및 프록시 영상 생성"""
     try:
@@ -190,7 +264,16 @@ async def complete_upload(
         print(f"   시작 시간: {request.metadata.absoluteStartTime}")
         print(f"   재생 길이: {request.metadata.duration}초")
         
-        # 2. 백그라운드에서 프록시 생성 🔑 이게 추가됨!
+        # 2. DB에 비디오 추가
+        new_video = {
+            "videoId": f"VID-{datetime.now().strftime('%M%S')}",
+            "fileName": request.videoName,
+            "status": "PROCESSING",
+            "timestamp": int(datetime.now().timestamp())
+        }
+        fake_db["videos"].insert(0, new_video)
+        
+        # 3. 백그라운드에서 프록시 생성
         background_tasks.add_task(create_proxy_video, request.videoName)
         
         return {
@@ -223,10 +306,15 @@ async def check_proxy_exists(filename: str):
         return {"status": "error", "message": str(e)}
 
 
+# ============================================
+# 서버 실행
+# ============================================
 if __name__ == "__main__":
-    print("🚀 SyncLab FastAPI 서버 시작!")
+    print("╔════════════════════════════════════════╗")
+    print("║   🚀 SyncLab FastAPI 서버 시작        ║")
+    print("╚════════════════════════════════════════╝")
     print(f"   원본 버킷: {S3_BUCKET_ORIGINAL}")
     print(f"   프록시 버킷: {S3_BUCKET_PROXY}")
     print(f"   임시 저장: {TEMP_DIR}")
     print("="*60)
-    uvicorn.run(app, host="127.0.0.1", port=8001)
+    uvicorn.run(app, host="0.0.0.0", port=8001)
