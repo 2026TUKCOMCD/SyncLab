@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import '../App.css';
 
 function LoginPage() {
     const navigate = useNavigate();
@@ -31,7 +32,6 @@ function LoginPage() {
             }
 
             console.log("로그인 시도:", formData);
-            alert("로그인 성공!");
 
             // 3. 편집화면으로 이동
             navigate('/editor');
@@ -43,45 +43,40 @@ function LoginPage() {
     };
 
     return (
-        <div className="auth-container">
-            <div className="auth-box">
+        <div className="auth-wrapper"> {/* 전체 감싸기 */}
+            <img src="/synclab_logo.png" alt="Synclab Logo" className="auth-logo" />
+            <div className="auth-card">  {/* 흰색 카드 */}
                 <h2>로그인</h2>
-                <p>아이디와 비밀번호를 입력하세요.</p>
-
                 <form onSubmit={handleLogin}>
-                    {/* 아이디 입력 */}
                     <div className="input-group">
                         <label>아이디</label>
                         <input
                             type="text"
                             name="id"
-                            placeholder="User_ID"
                             value={formData.id}
                             onChange={handleChange}
+                            placeholder="아이디를 입력하세요"
                             required
                         />
                     </div>
-
-                    {/* 비밀번호 입력 */}
                     <div className="input-group">
                         <label>비밀번호</label>
                         <input
                             type="password"
                             name="password"
-                            placeholder="Password"
                             value={formData.password}
                             onChange={handleChange}
+                            placeholder="비밀번호를 입력하세요"
                             required
                         />
                     </div>
-
-                    <button type="submit" className="primary-btn">로그인</button>
+                    <button type="submit" className="auth-btn">로그인</button>
                 </form>
-
-                <div className="auth-footer">
-                    <button className="link-btn" onClick={() => navigate('/signup')}>
-                        계정이 없으신가요? 회원가입
-                    </button>
+                
+                {/* 회원가입 페이지로 이동하는 링크 추가 */}
+                <div className="auth-link">
+                    계정이 없으신가요? 
+                    <span onClick={() => navigate('/signup')}>회원가입</span>
                 </div>
             </div>
         </div>

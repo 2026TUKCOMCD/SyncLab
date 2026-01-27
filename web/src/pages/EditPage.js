@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Scissors, Play, Pause, SkipBack, SkipForward, Save, Plus, Theater } from 'lucide-react';
+import { Scissors, Play, Pause, SkipBack, SkipForward, Save, Plus, Theater, Radius } from 'lucide-react';
 
 function EditPage() {
 
@@ -19,16 +19,11 @@ function EditPage() {
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
 
   const THEME = {
-    bgMain: '#16181dff',      // 아주 깊은 남색 계열 블랙
-    bgPanel: '#16181dff',     // 패널 배경
+    bgMain: 'rgb(255,255,255)',
+    bgPanel: 'rgb(255,255,255)',
     bgElement: '#1E2330',   // 리스트 아이템 배경
-    border: '#2A3441',      // 경계선
-    textMain: '#F3F4F6',    // 메인 텍스트
-    textMuted: '#9CA3AF',   // 보조 텍스트
-    accent: '#3B82F6',      // 기본 강조 (파랑)
-    danger: '#EF4444',      // 경고/삭제/Live (빨강)
-    success: '#10B981',     // 성공/In점 (초록)
-    neonGlow: '0 0 10px rgba(59, 130, 246, 0.5)', // 네온 효과
+    border: 'rgb(188,205,232)', // 경계선
+    textMain: 'rgb(53,82,160)',    // 메인 텍스트
   };
 
   const cameras = [
@@ -290,15 +285,12 @@ function EditPage() {
   return (
     <div style={{ minheight: '100vh', backgroundColor: THEME.bgMain, color: THEME.textMain, display: 'flex', flexDirection: 'column' }}>
       {/* 헤더 부분 */}
-      <div style={{ backgroundColor: THEME.bgPanel, borderBottom: '1px solid #374151', padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ backgroundColor: THEME.bgPanel, borderBottom: `1px solid ${THEME.border}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <div style={{ width: '32px', height: '32px', background: 'linear-gradient(135deg, #8aea5eff, #5f9de9ff)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <Scissors size={18} color="white" />
-          </div>
-          <h1 style={{ fontSize: '20px', fontWeight: 'bold' }}>SyncLab Editor</h1>
+          <img src="/synclab_logo.png" alt="synclab_logo" style={{maxWidth: '200px', height: '50px'}}/>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <div style={{ fontSize: '14px', color: '#9ca3af' }}>
+          <div style={{ fontSize: '14px', color: 'rgb(0,0,0)' }}>
             총 클립: {savedClips.length}개 | 총 길이: {formatTime(totalClipDuration)}
           </div>
           <button style={{ padding: '8px 16px', backgroundColor: '#2563eb', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '8px', border: 'none', color: 'white', cursor: 'pointer' }}>
@@ -313,8 +305,8 @@ function EditPage() {
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
 
         {/* 좌측 사이드 바 */}
-        <div style={{ width: '200px', backgroundColor: THEME.bgPanel, borderRight: `1px solid ${THEME.border}`, padding: '16px', overflowY: 'auto' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '16px' }}>💾 리소스 보관함</h2>
+        <div style={{ width: '200px', backgroundColor: THEME.bgPanel, borderRight:`1px solid ${THEME.border}`, padding: '16px', overflowY: 'auto' }}>
+          <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '16px', color:THEME.textMain }}>📁 리소스 보관함</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
             {cameras.map((cam) => (
               <div key={cam.id} style={{
@@ -351,7 +343,7 @@ function EditPage() {
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
           <div style={{ flex: 1, display: 'flex', padding: '16px', gap: '16px' }}>
             <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#9ca3af' }}>멀티뷰 소스</h2>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '8px', color: THEME.textMain }}>멀티뷰 소스</h2>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', flex: 1, gap: '4px' }}>
                 {multiviewCameras.map((cam, slotIndex) => (
                   <div
@@ -361,6 +353,7 @@ function EditPage() {
                       position: 'relative',
                       backgroundColor: 'black',
                       height: '300px',
+                      borderRadius: '8px',
                       overflow: 'hidden',
                       cursor: cam ? 'pointer' : 'default',
                       border: cam && selectedSourceCam === cam.id
@@ -424,7 +417,7 @@ function EditPage() {
                     ) : (
                       <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '8px', color: '#6b7280' }}>
                         <div style={{ fontSize: '40px' }}>➕</div>
-                        <div style={{ fontSize: '12px' }}>왼쪽에서 카메라 선택</div>
+                        <div style={{ fontSize: '14px' }}>왼쪽에서 카메라 선택</div>
                       </div>
                     )}
                   </div>
@@ -433,7 +426,7 @@ function EditPage() {
             </div>
             {/* 선택한 메인 비디오 화면 */}
             <div style={{ width: '50%', display: 'flex', flexDirection: 'column' }}>
-              <h2 style={{ fontSize: '18px', fontWeight: '600', marginBottom: '8px', color: '#9ca3af' }}>프로그램 모니터</h2>
+              <h2 style={{ fontSize: '20px', fontWeight: '700', marginBottom: '8px', color: THEME.textMain }}>프로그램 모니터</h2>
               <div style={{ flex: 1, backgroundColor: 'black', borderRadius: '8px', overflow: 'hidden', position: 'relative', height: '600px' }}>
                 {selectedSourceCam === null ? (
                   <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', flexDirection: 'column', gap: '16px', color: '#6b7280' }}>
@@ -466,19 +459,19 @@ function EditPage() {
             </div>
           </div>
 
-          <div style={{ minHeight: '320px', maxHeight: '400px', backgroundColor: THEME.bgPanel, borderTop: '1px solid #374151', padding: '16px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
+          <div style={{ minHeight: '320px', maxHeight: '400px', backgroundColor: THEME.bgPanel, borderTop: `1px solid ${THEME.border}`, padding: '16px', display: 'flex', flexDirection: 'column', overflowY: 'auto' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px' }}>
-              <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#9ca3af' }}>타임라인</h2>
+              <h2 style={{ fontSize: '20px', fontWeight: '800', color: THEME.textMain }}>타임라인</h2>
               <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginRight: '12px' }}>
                 <button onClick={() => {
                   const newTime = Math.max(0, currentTime - 1);
                   setCurrentTime(newTime);
                   Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; });
                   if (programVideoRef.current) programVideoRef.current.currentTime = newTime;
-                }} disabled={selectedSourceCam === null} style={{ padding: '8px', borderRadius: '6px', backgroundColor: 'transparent', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.5 : 1 }}>
+                }} disabled={selectedSourceCam === null} style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'transparent', border: 'none', color: 'black', cursor: 'pointer', opacity: selectedSourceCam === null ? 1 : 1 }}>
                   <SkipBack size={20} />
                 </button>
-                <button onClick={togglePlay} disabled={selectedSourceCam === null} style={{ padding: '12px', backgroundColor: '#2563eb', borderRadius: '8px', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.5 : 1 }}>
+                <button onClick={togglePlay} disabled={selectedSourceCam === null} style={{ padding: '12px', backgroundColor: 'transparent', borderRadius: '8px', border: 'none', color: 'black', cursor: 'pointer', opacity: selectedSourceCam === null ? 1 : 1 }}>
                   {isPlaying ? <Pause size={20} /> : <Play size={20} />}
                 </button>
                 <button onClick={() => {
@@ -486,17 +479,17 @@ function EditPage() {
                   setCurrentTime(newTime);
                   Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; });
                   if (programVideoRef.current) programVideoRef.current.currentTime = newTime;
-                }} disabled={selectedSourceCam === null} style={{ padding: '8px', borderRadius: '6px', backgroundColor: 'transparent', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.5 : 1 }}>
+                }} disabled={selectedSourceCam === null} style={{ padding: '12px', borderRadius: '8px', backgroundColor: 'transparent', border: 'none', color: 'black', cursor: 'pointer', opacity: selectedSourceCam === null ? 1 : 1 }}>
                   <SkipForward size={20} />
                 </button>
                 <div style={{ width: '1px', height: '24px', backgroundColor: '#4b5563', margin: '0 8px' }} />
-                <button onClick={setIn} disabled={selectedSourceCam === null} style={{ padding: '8px 12px', backgroundColor: '#059669', borderRadius: '6px', fontSize: '14px', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.5 : 1 }}>
+                <button onClick={setIn} disabled={selectedSourceCam === null} style={{ padding: '8px 12px', backgroundColor: '#059669', borderRadius: '6px', fontSize: '14px', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.9 : 1 }}>
                   In 설정
                 </button>
-                <button onClick={setOut} disabled={selectedSourceCam === null} style={{ padding: '8px 12px', backgroundColor: '#dc2626', borderRadius: '6px', fontSize: '14px', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.5 : 1 }}>
+                <button onClick={setOut} disabled={selectedSourceCam === null} style={{ padding: '8px 12px', backgroundColor: '#dc2626', borderRadius: '6px', fontSize: '14px', border: 'none', color: 'white', cursor: 'pointer', opacity: selectedSourceCam === null ? 0.9 : 1 }}>
                   Out 설정
                 </button>
-                <button onClick={addClip} disabled={selectedSourceCam === null || inPoint === null || outPoint === null} style={{ padding: '8px 12px', backgroundColor: '#d97706', borderRadius: '6px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', border: 'none', color: 'white', cursor: 'pointer', opacity: (selectedSourceCam === null || inPoint === null || outPoint === null) ? 0.5 : 1 }}>
+                <button onClick={addClip} disabled={selectedSourceCam === null || inPoint === null || outPoint === null} style={{ padding: '8px 12px', backgroundColor: '#d97706', borderRadius: '6px', fontSize: '14px', display: 'flex', alignItems: 'center', gap: '8px', border: 'none', color: 'white', cursor: 'pointer', opacity: (selectedSourceCam === null || inPoint === null || outPoint === null) ? 0.9 : 1 }}>
                   <Plus size={16} />
                   클립 추가
                 </button>
@@ -615,10 +608,10 @@ function EditPage() {
             )}
 
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>편집 타임라인 (저장된 클립)</div>
-              <div style={{ position: 'relative', height: '120px', backgroundColor: '#111827', borderRadius: '8px', padding: '8px', overflowX: 'auto', minheight: '100px', maxHeight: '160px', overflowY: 'hidden' }}>
+              <div style={{ fontSize: '14px', color: 'black', marginBottom: '4px', fontWeight:'600' }}>편집 타임라인 (저장된 클립)</div>
+              <div style={{ position: 'relative', height: '120px', backgroundColor: THEME.border, borderRadius: '8px', padding: '8px', overflowX: 'auto', minheight: '100px', maxHeight: '160px', overflowY: 'hidden' }}>
                 {savedClips.length === 0 ? (
-                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#6b7280', fontSize: '14px' }}>
+                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontSize: '16px' }}>
                     저장된 클립이 없습니다. 소스에서 구간을 선택하고 "클립 추가"를 눌러주세요.
                   </div>
                 ) : (

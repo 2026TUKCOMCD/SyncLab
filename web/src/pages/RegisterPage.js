@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import '../App.css';
 
 function RegisterPage() {
     const navigate = useNavigate();
@@ -37,55 +38,47 @@ function RegisterPage() {
   };
 
     return (
-        <div className="auth-container">
-            <div className="auth-box">
+        <div className="auth-wrapper">
+            <img src="/synclab_logo.png" alt="synclab_logo" className="auth-logo"/>
+            <div className="auth-card">
                 <h2>회원가입</h2>
-                <p>테스트용 계정을 생성합니다.</p>
-
                 <form onSubmit={handleSignup}>
-
-                    {/* 아이디 입력 */}
                     <div className="input-group">
-                        <label>아이디 (ID)</label>
+                        <label>닉네임</label>
                         <input
                             type="text"
-                            name="id"
-                            placeholder="아이디 입력"
+                            name="user_name"
                             onChange={handleChange}
+                            placeholder="닉네임 입력"
                             required
                         />
                     </div>
-
-                    {/* 비밀번호 입력 */}
                     <div className="input-group">
-                        <label>비밀번호 (Password)</label>
+                        <label>아이디</label>
+                        <input
+                            type="text"
+                            name="id"
+                            onChange={handleChange}
+                            placeholder="사용할 아이디"
+                            required
+                        />
+                    </div>
+                    <div className="input-group">
+                        <label>비밀번호</label>
                         <input
                             type="password"
                             name="password"
-                            placeholder="비밀번호 입력"
                             onChange={handleChange}
+                            placeholder="비밀번호"
                             required
                         />
                     </div>
                     
-                    {/* 닉네임 입력 */}
-                    <div className="input-group">
-                        <label>닉네임 (Nickname)</label>
-                        <input
-                            type="text"
-                            name="user_name"
-                            placeholder="닉네임 입력"
-                            onChange={handleChange}
-                            required
-                        />
-                    </div>
-                    <button type="submit" className="primary-btn">가입하기</button>
+                    <button type="submit" className="auth-btn">가입하기</button>
                 </form>
-
-                <div className="auth-footer">
-                    <button className="link-btn" onClick={() => navigate('/login')}>
-                        로그인 하러 가기
-                    </button>
+                <div className="auth-link">
+                    이미 계정이 있으신가요? 
+                    <span onClick={() => navigate('/login')}>로그인</span>
                 </div>
             </div>
         </div>
