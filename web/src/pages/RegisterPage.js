@@ -7,7 +7,8 @@ function RegisterPage() {
 
     const [formData, setFormData] = useState({
         id: '',
-        password: ''
+        password: '',
+        user_name: ''
     });
 
     const handleChange = (e) => {
@@ -21,7 +22,8 @@ function RegisterPage() {
         try{
             const response = await axios.post('/api/users/signup', {
                 id: formData.id,
-                password: formData.password
+                password: formData.password,
+                user_name: formData.user_name
             });
             if(response.status == 200){
                 alert("회원가입 성공! 로그인 해주세요.");
@@ -41,9 +43,10 @@ function RegisterPage() {
                 <p>테스트용 계정을 생성합니다.</p>
 
                 <form onSubmit={handleSignup}>
+
                     {/* 아이디 입력 */}
                     <div className="input-group">
-                        <label>아이디 (User ID)</label>
+                        <label>아이디 (ID)</label>
                         <input
                             type="text"
                             name="id"
@@ -64,7 +67,18 @@ function RegisterPage() {
                             required
                         />
                     </div>
-
+                    
+                    {/* 닉네임 입력 */}
+                    <div className="input-group">
+                        <label>닉네임 (Nickname)</label>
+                        <input
+                            type="text"
+                            name="user_name"
+                            placeholder="닉네임 입력"
+                            onChange={handleChange}
+                            required
+                        />
+                    </div>
                     <button type="submit" className="primary-btn">가입하기</button>
                 </form>
 

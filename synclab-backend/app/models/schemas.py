@@ -45,6 +45,7 @@ class ProxyRequest(BaseModel):
 class Usercreate(BaseModel):
     id: str
     password: str
+    user_name: str
 
 class Userlogin(BaseModel):
     id: str

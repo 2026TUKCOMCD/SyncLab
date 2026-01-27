@@ -6,7 +6,7 @@ function LoginPage() {
     const navigate = useNavigate();
 
     const [formData, setFormData] = useState({
-        user_id: '',
+        id: '',
         password: ''
     });
     const handleChange = (e) => {
@@ -18,13 +18,20 @@ function LoginPage() {
         e.preventDefault();
 
         try {
-            // 1. FastAPI 서버로 로그인 요청(주소 포함)
-            const response = await axios.post('https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/login', formData);
-            // 2. 로그인 성공 시 토큰 저장
-            localStorage.setItem('accessToken', response.data.access_toekn);
+            // 1. FastAPI 서버로 로그인 요청
+            const response = await axios.post('/api/users/login', {
+                id: formData.id,
+                password: formData.password
+            });
+            if(response.status == 200){ // 로그인 성공 시
+                const token = response.data.access_token;
+                localStorage.setItem('accessToken', token);
+
+                localStorage.setItem('userName', response.data.user_name);
+            }
 
             console.log("로그인 시도:", formData);
-            alert("로그인에 성공했습니다! (테스트)");
+            alert("로그인 성공!");
 
             // 3. 편집화면으로 이동
             navigate('/editor');
@@ -47,9 +54,9 @@ function LoginPage() {
                         <label>아이디</label>
                         <input
                             type="text"
-                            name="user_id"
+                            name="id"
                             placeholder="User_ID"
-                            value={formData.user_id}
+                            value={formData.id}
                             onChange={handleChange}
                             required
                         />
