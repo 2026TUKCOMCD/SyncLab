@@ -41,3 +41,11 @@ class ProxyRequest(BaseModel):
     video_id: int
     target_resolution: str = "1280x720"
     crf: int = Field(default=23, ge=0, le=51)
+
+class Usercreate(BaseModel):
+    id: str
+    password: str
+
+class Userlogin(BaseModel):
+    id: str
+    password: str

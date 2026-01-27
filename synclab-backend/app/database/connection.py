@@ -13,7 +13,7 @@ db_pool = pooling.MySQLConnectionPool(
     host=os.getenv("DB_HOST", "127.0.0.1"),
     port=int(os.getenv("DB_PORT", 3306)),
     user=os.getenv("DB_USER", "root"),
-    password=os.getenv("DB_PASSWORD", "root"),
+    password=os.getenv("DB_PASSWORD", "rootroot"),
     database=os.getenv("DB_NAME", "synclab")
 )
 
@@ -42,3 +42,10 @@ def test_connection():
     except Exception as e:
         print(f"❌ DB 연결 실패: {e}")
         return False
+    
+def get_db():
+    conn = db_pool.get_connection()
+    try:
+        yield conn
+    finally:
+        conn.close()

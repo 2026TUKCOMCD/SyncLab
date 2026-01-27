@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.routers import video
+from app.routers import auth
 from app.database.connection import test_connection
 import os
 from dotenv import load_dotenv
@@ -26,10 +27,7 @@ app.add_middleware(
 
 # 라우터 등록
 app.include_router(video.router)
-
-# 정적 파일 제공
-app.mount("/static/original", StaticFiles(directory="./uploads/original"), name="original")
-app.mount("/static/proxy", StaticFiles(directory="./uploads/proxy"), name="proxy")
+app.include_router(auth.router)
 
 # 시작 이벤트
 @app.on_event("startup")

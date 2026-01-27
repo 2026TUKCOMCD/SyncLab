@@ -2,7 +2,7 @@
 import mysql.connector
 from fastapi import APIRouter, Depends, HTTPException, status
 # from app.database.connection import get_db # 데이터베이스 세션 가져오는 함수? 필요한가
-from app.models.schemas import Usercreate, UserLogin
+from app.models.schemas import Usercreate, Userlogin
 from app.database.connection import *
 
 router = APIRouter(prefix="/users") # /api/users 로 설정해야 함
