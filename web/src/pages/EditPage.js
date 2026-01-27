@@ -277,6 +277,14 @@ function EditPage() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('userName');
+
+    alert("로그아웃 되었습니다.");
+    window.location.href = '/';
+  };
+
   const totalClipDuration = savedClips.reduce((sum, clip) => sum + clip.duration, 0);
 
   return (
@@ -297,6 +305,7 @@ function EditPage() {
             <Save size={18} />
             프로젝트 저장
           </button>
+          <button onClick={handleLogout}>로그아웃</button>
         </div>
       </div>
 
