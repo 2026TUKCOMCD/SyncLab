@@ -24,6 +24,7 @@ fun NavGraph(
     isPermissionGranted: Boolean,
     onPermissionRequest: () -> Unit
 ) {
+    // 앱 전체에서 공유되는 세션 데이터 관리자
     val sharedHomeViewModel: HomeViewModel = viewModel()
     val context = LocalContext.current
     var backPressedTime by remember { mutableLongStateOf(0L) }
@@ -32,16 +33,17 @@ fun NavGraph(
         navController = navController,
         startDestination = Screen.Login.route
     ) {
+        // 1. 로그인 화면
         composable(route = Screen.Login.route) {
             LoginScreen(onLoginSuccess = {
                 navController.navigate(Screen.Home.route) {
-                    // "login" 화면 자체를 스택에서 제거
                     popUpTo(Screen.Login.route) { inclusive = true }
                     launchSingleTop = true
                 }
             })
         }
 
+        // 2. 홈 화면
         composable(route = Screen.Home.route) {
             BackHandler {
                 val currentTime = System.currentTimeMillis()
@@ -55,29 +57,37 @@ fun NavGraph(
             HomeScreen(viewModel = sharedHomeViewModel)
         }
 
-        // --- 기타 화면 (뒤로가기 시 홈으로) ---
+        // --- 공통: 뒤로가기 시 홈으로 이동 ---
         val navigateToHome = {
             navController.navigate(Screen.Home.route) {
-                // 홈 화면까지의 스택을 모두 비움
                 popUpTo(Screen.Home.route) { inclusive = true }
                 launchSingleTop = true
             }
         }
 
+        // 3. 녹화 화면 (ViewModel 전달)
         composable(route = Screen.Record.route) {
             BackHandler { navigateToHome() }
             if (isPermissionGranted) {
-                RecordScreen(navController = navController)
+                RecordScreen(
+                    navController = navController,
+                    homeViewModel = sharedHomeViewModel // ✅ 전달 완료
+                )
             } else {
                 PermissionRequestScreen(onRequest = onPermissionRequest)
             }
         }
 
+        // 4. 업로드 화면 (ViewModel 전달)
         composable(route = Screen.Upload.route) {
             BackHandler { navigateToHome() }
-            UploadScreen(navController = navController)
+            UploadScreen(
+                navController = navController,
+                homeViewModel = sharedHomeViewModel // ✅ 전달 완료
+            )
         }
 
+        // 5. 설정 화면
         composable(route = Screen.Settings.route) {
             BackHandler { navigateToHome() }
             PlaceholderScreen("환경 설정")

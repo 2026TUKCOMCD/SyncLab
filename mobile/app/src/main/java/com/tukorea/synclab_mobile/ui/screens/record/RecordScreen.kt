@@ -17,29 +17,24 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.tukorea.synclab_mobile.Screen
-import com.tukorea.synclab_mobile.data.model.VideoMetadata
+import com.tukorea.synclab_mobile.ui.screens.home.HomeViewModel
 import com.tukorea.synclab_mobile.utils.NtpSyncManager
 import kotlinx.coroutines.launch
 import java.io.File
+import org.json.JSONObject
 
-/**
- * 전략 B(선형 보간)가 적용된 녹화 화면
- * 촬영 시작/종료 시점의 Raw 데이터(SystemTime, Offset, RTT)를 모두 수집합니다.
- */
 @Composable
-fun RecordScreen(navController: NavController) {
+fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // 상태 관리 변수들
+    // 현재 세션 ID (ViewModel에서 가져옴)
+    val sessionId = homeViewModel.currentSession?.sessionId ?: "default_session"
+
     var isRecording by remember { mutableStateOf(false) }
     var currentRecording by remember { mutableStateOf<Recording?>(null) }
-
-    // [수정] 불필요한 Rtt 변수 제거 및 DB 필드 위주로 재편
-    var startSys by remember { mutableLongStateOf(0L) }
-    var startOff by remember { mutableLongStateOf(0L) }
-    var endSys by remember { mutableLongStateOf(0L) }
-    var endOff by remember { mutableLongStateOf(0L) }
+    var absoluteStartTime by remember { mutableLongStateOf(0L) }
+    var absoluteEndTime by remember { mutableLongStateOf(0L) }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         CameraView(
@@ -48,57 +43,59 @@ fun RecordScreen(navController: NavController) {
                 currentRecording = recording
             },
             onRecordingFinished = { file ->
-                // [수정] 슬림해진 VideoMetadata 모델에 맞춰 데이터 생성
-                val metadata = VideoMetadata.create(
-                    fileName = file.name,
-                    videoName = "SyncLab_Video_${System.currentTimeMillis()}", // 기본 영상 이름 생성
-                    startSys = startSys,
-                    startOff = startOff,
-                    endSys = endSys,
-                    endOff = endOff
-                )
+                // 1. JSON 메타데이터 생성 (sessionId 포함)
+                val duration = (absoluteEndTime - absoluteStartTime) / 1000.0
+                val metadataJson = JSONObject().apply {
+                    put("absoluteStartTime", absoluteStartTime)
+                    put("absoluteEndTime", absoluteEndTime)
+                    put("duration", String.format("%.3f", duration).toDouble())
+                    put("fileName", file.name)
+                    put("videoName", file.name)
+                    put("sessionId", sessionId) // ✅ 업로드 시 S3 폴더명이 됨
+                }
 
-                // JSON 파일로 저장
+                // 2. JSON 파일 저장 (동일한 파일명.json)
                 try {
                     val jsonFile = File(context.externalCacheDir, "${file.nameWithoutExtension}.json")
-                    jsonFile.writeText(metadata.toJson())
+                    jsonFile.writeText(metadataJson.toString(4))
                     Log.d("SyncLab_Metadata", "메타데이터 저장 성공: ${jsonFile.absolutePath}")
                 } catch (e: Exception) {
                     Log.e("SyncLab_Error", "JSON 저장 실패", e)
                 }
 
+                // 3. 업로드 화면으로 단순 이동
+                // 💡 파일 경로는 인자로 보내지 않고, UploadScreen에서 최신 파일을 찾도록 함
                 navController.navigate(Screen.Upload.route) {
-                    // 현재 RecordScreen을 스택에서 비우고 Upload로 이동 (연속 촬영 시 스택 쌓임 방지)
                     popUpTo(Screen.Record.route) { inclusive = true }
                     launchSingleTop = true
                 }
             }
         )
 
-        // 하단 녹화 컨트롤러 (Rtt 로직 제거)
+        // 상단 현재 세션 표시
+        Text(
+            text = "세션: $sessionId",
+            color = Color.White,
+            modifier = Modifier.align(Alignment.TopCenter).padding(top = 32.dp),
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        // 녹화 컨트롤러
         Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)) {
             Button(
                 onClick = {
                     scope.launch {
                         if (isRecording) {
-                            // --- 녹화 종료 프로세스 ---
-                            endSys = System.currentTimeMillis()
-                            val syncResult = NtpSyncManager.sync()
-                            endOff = syncResult.offset // Rtt 할당 제거
-
+                            absoluteEndTime = NtpSyncManager.getCurrentNtpTime()
                             currentRecording?.stop()
                             isRecording = false
                         } else {
-                            // --- 녹화 시작 프로세스 ---
-                            val syncResult = NtpSyncManager.sync()
-                            startOff = syncResult.offset // Rtt 할당 제거
-                            startSys = System.currentTimeMillis()
-
+                            NtpSyncManager.checkAndSync()
+                            absoluteStartTime = NtpSyncManager.getCurrentNtpTime()
                             isRecording = true
                         }
                     }
                 },
-                // ... (이하 디자인 코드는 기존과 동일)
                 modifier = Modifier.size(80.dp),
                 shape = CircleShape,
                 colors = ButtonDefaults.buttonColors(

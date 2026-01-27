@@ -5,34 +5,41 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.RadioButtonChecked
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.tukorea.synclab_mobile.ui.navigation.NavGraph // 작성하신 NavGraph 임포트
+import com.tukorea.synclab_mobile.ui.navigation.NavGraph
 import com.tukorea.synclab_mobile.ui.theme.SyncLab_MobileTheme
 import com.tukorea.synclab_mobile.utils.PermissionHelper
 import com.tukorea.synclab_mobile.utils.NtpSyncManager
 
-// 화면 경로 및 정보 정의
+// 시안 기반 화면 정보 정의
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
     object Login : Screen("login", "로그인", Icons.Default.Lock)
-    object Home : Screen("home", "메인", Icons.Default.Home)
-    object Record : Screen("record", "녹화", Icons.Default.Videocam)
-    object Upload : Screen("upload", "업로드", Icons.Default.Share)
-    object Settings : Screen("settings", "설정", Icons.Default.Settings)
+    object Home : Screen("home", "홈", Icons.Default.Home)
+    object Record : Screen("record", "녹화", Icons.Default.RadioButtonChecked) // fa-circle-dot 스타일
+    object Upload : Screen("upload", "업로드", Icons.Default.CloudUpload) // fa-cloud-arrow-up 스타일
+    object Settings : Screen("settings", "설정", Icons.Default.Settings) // fa-gear 스타일
 }
 
 class MainActivity : ComponentActivity() {
@@ -56,11 +63,9 @@ fun MainAppScaffold() {
     val navController = rememberNavController()
     val context = LocalContext.current
 
-    // 현재 경로 감시
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    // 로그인 화면에서는 하단 바를 숨김
     val showBottomBar = currentDestination?.route != Screen.Login.route
 
     LaunchedEffect(Unit) {
@@ -77,36 +82,71 @@ fun MainAppScaffold() {
         isPermissionGranted = result.values.all { it }
     }
 
-    // 하단 네비게이션에 표시할 항목들
     val bottomNavItems = listOf(Screen.Home, Screen.Record, Screen.Upload, Screen.Settings)
 
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                NavigationBar {
+                // 시안 디자인 적용: 배경 흰색, 상단 테두리 미세하게
+                NavigationBar(
+                    containerColor = Color.White,
+                    tonalElevation = 8.dp,
+                    modifier = Modifier.height(80.dp) // 시안의 h-20 반영
+                ) {
                     bottomNavItems.forEach { screen ->
+                        val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
+
                         NavigationBarItem(
-                            icon = { Icon(screen.icon, contentDescription = screen.label) },
-                            label = { Text(screen.label) },
-                            selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true,
+                            icon = {
+                                Box {
+                                    Icon(
+                                        imageVector = screen.icon,
+                                        contentDescription = screen.label,
+                                        modifier = Modifier.size(24.dp)
+                                    )
+                                    // 업로드 아이콘에 시안의 빨간 알림 점 추가
+                                    if (screen is Screen.Upload) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(8.dp)
+                                                .align(Alignment.TopEnd)
+                                                .offset(x = 2.dp, y = (-2).dp)
+                                                .clip(CircleShape)
+                                                .background(Color.Red)
+                                        )
+                                    }
+                                }
+                            },
+                            label = {
+                                Text(
+                                    text = screen.label,
+                                    fontSize = 10.sp,
+                                    fontWeight = if (selected) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium
+                                )
+                            },
+                            selected = selected,
                             onClick = {
                                 navController.navigate(screen.route) {
-                                    // 🔴 탭 이동 시 스택 꼬임 방지: 홈 화면 위로 다 비움
                                     popUpTo(navController.graph.findStartDestination().id) {
                                         saveState = true
                                     }
                                     launchSingleTop = true
                                     restoreState = true
                                 }
-                            }
+                            },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = Color(0xFF3366FF), // 시안의 blue-600
+                                selectedTextColor = Color(0xFF3366FF),
+                                unselectedIconColor = Color(0xFF94A3B8), // 시안의 slate-400
+                                unselectedTextColor = Color(0xFF94A3B8),
+                                indicatorColor = Color.Transparent // 강조 배경 제거 (시안 스타일)
+                            )
                         )
                     }
                 }
             }
         }
     ) { innerPadding ->
-        // 🔴 핵심 수정: MainActivity에 직접 작성했던 NavHost를 지우고,
-        // 데이터 유지와 스택 관리가 구현된 NavGraph.kt의 함수를 호출합니다.
         Box(modifier = Modifier.padding(innerPadding)) {
             NavGraph(
                 navController = navController,

@@ -5,29 +5,23 @@ import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.tukorea.synclab_mobile.api.NetworkClient
-import com.tukorea.synclab_mobile.data.api.CreateSessionRequest
 import com.tukorea.synclab_mobile.data.api.SessionActionRequest
 import com.tukorea.synclab_mobile.data.model.SessionInfo
 import com.tukorea.synclab_mobile.data.model.VideoStatus
 import kotlinx.coroutines.launch
 
 class HomeViewModel : ViewModel() {
-    // 현재 세션 정보
+    // 현재 활성화된 세션 정보를 관찰 가능한 상태로 유지
     var currentSession by mutableStateOf<SessionInfo?>(null)
-
-    // 과거 세션 기록 리스트
     var sessionHistory by mutableStateOf<List<SessionInfo>>(emptyList())
-
-    // 최근 영상 처리 리스트 (Status 갱신의 핵심)
     var recentVideos by mutableStateOf<List<VideoStatus>>(emptyList())
 
     init {
-        // 앱 시작 시 초기 데이터 로드 (홈 데이터 통합 로드)
         loadHomeData()
     }
 
     /**
-     * 서버에서 홈 화면에 필요한 초기 데이터(세션, 히스토리, 영상목록)를 가져옵니다.
+     * 홈 데이터 로드: 서버에서 현재 세션과 히스토리를 가져옴
      */
     fun loadHomeData() {
         viewModelScope.launch {
@@ -35,7 +29,13 @@ class HomeViewModel : ViewModel() {
                 val data = NetworkClient.homeService.getHomeData()
                 currentSession = data.current_session
                 sessionHistory = data.history
-                recentVideos = data.videos
+
+                // 현재 세션 ID가 있다면 해당 세션에 속한 비디오만 필터링
+                val sid = currentSession?.sessionId
+                if (sid != null) {
+                    recentVideos = data.videos[sid] ?: emptyList()
+                    Log.d("HomeViewModel", "현재 세션($sid) 영상 로드 성공: ${recentVideos.size}개")
+                }
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "홈 데이터 로드 실패: ${e.message}")
             }
@@ -43,15 +43,22 @@ class HomeViewModel : ViewModel() {
     }
 
     /**
-     * 🔴 HomeScreen의 LaunchedEffect에서 호출할 함수
-     * 서버에서 최신 영상 처리 상태만 가져와 업데이트합니다.
+     * 영상 상태 갱신: 특정 세션의 영상 리스트를 서버에서 다시 가져옴
      */
     fun refreshVideoStatus() {
         viewModelScope.launch {
+            val sid = currentSession?.sessionId
             try {
-                val updatedVideos = NetworkClient.homeService.getVideoStatus()
-                recentVideos = updatedVideos // UI 자동 갱신
-                Log.d("HomeViewModel", "영상 처리 상태 업데이트 완료")
+                if (sid != null) {
+                    val response = NetworkClient.homeService.getSessionVideos(sid)
+                    // 서버 응답에서 "videos" 리스트 추출 (안전한 캐스팅)
+                    val videoList = response["videos"] as? List<*>
+                    recentVideos = videoList?.filterIsInstance<VideoStatus>() ?: emptyList()
+                    Log.d("HomeViewModel", "세션($sid) 상태 갱신 완료")
+                } else {
+                    // 세션이 없는 경우 일반 상태 조회
+                    recentVideos = NetworkClient.homeService.getVideoStatus()
+                }
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "영상 상태 갱신 실패: ${e.message}")
             }
@@ -59,7 +66,7 @@ class HomeViewModel : ViewModel() {
     }
 
     /**
-     * 새로운 세션을 생성합니다.
+     * 세션 생성: 새로운 세션을 만들고 ID를 저장
      */
     fun createSession(name: String) {
         viewModelScope.launch {
@@ -67,6 +74,8 @@ class HomeViewModel : ViewModel() {
                 val response = NetworkClient.homeService.createSession(SessionActionRequest(name = name))
                 if (response.status == "success") {
                     currentSession = response.session
+                    recentVideos = emptyList()
+                    Log.d("HomeViewModel", "새 세션 생성 성공: ${currentSession?.sessionId}")
                 }
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "세션 생성 실패: ${e.message}")
@@ -75,7 +84,7 @@ class HomeViewModel : ViewModel() {
     }
 
     /**
-     * 입력받은 코드로 기존 세션에 참가합니다.
+     * 세션 참가: 코드를 입력해 기존 세션에 들어감
      */
     fun joinSession(code: String) {
         viewModelScope.launch {
@@ -83,6 +92,8 @@ class HomeViewModel : ViewModel() {
                 val response = NetworkClient.homeService.joinSession(SessionActionRequest(sessionId = code))
                 if (response.status == "success") {
                     currentSession = response.session
+                    Log.d("HomeViewModel", "세션 참가 성공: ${currentSession?.sessionId}")
+                    refreshVideoStatus() // 참가한 세션의 영상 목록 불러오기
                 }
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "세션 참가 실패: ${e.message}")
@@ -90,11 +101,9 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    /**
-     * 현재 참여 중인 세션을 종료(퇴장)합니다.
-     */
     fun clearSession() {
         currentSession = null
-        // 필요시 서버에 퇴장 알림 API 호출 로직 추가 가능
+        recentVideos = emptyList()
+        Log.d("HomeViewModel", "세션 종료 및 데이터 초기화")
     }
 }

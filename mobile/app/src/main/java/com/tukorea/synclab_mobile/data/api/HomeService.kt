@@ -5,6 +5,7 @@ import com.tukorea.synclab_mobile.data.model.VideoStatus
 import retrofit2.http.Body
 import retrofit2.http.GET
 import retrofit2.http.POST
+import retrofit2.http.Path
 
 // --- [데이터 모델 정의] ---
 
@@ -18,7 +19,7 @@ data class SessionResponse(
 data class HomeDataResponse(
     val current_session: SessionInfo?,
     val history: List<SessionInfo>,
-    val videos: List<VideoStatus>
+    val videos: Map<String, List<VideoStatus>>
 )
 
 // 3. 서버에 보낼 요청 데이터 (기존 유지)
@@ -34,18 +35,19 @@ data class SessionActionRequest(
 // --- [서비스 인터페이스] ---
 
 interface HomeService {
-    // 최근 영상 목록 및 히스토리 조회를 위해 추가
     @GET("api/home/data")
     suspend fun getHomeData(): HomeDataResponse
 
-    // 영상 처리 상태 폴링을 위해 추가
     @GET("api/video/status")
     suspend fun getVideoStatus(): List<VideoStatus>
 
-    // 기존 함수 유지 (매개변수 타입을 SessionActionRequest로 변경하여 ViewModel과 호환성 확보)
     @POST("api/session/create")
     suspend fun createSession(@Body request: SessionActionRequest): SessionResponse
 
     @POST("api/session/join")
     suspend fun joinSession(@Body request: SessionActionRequest): SessionResponse
+
+    // ✅ 특정 세션의 영상 목록을 가져오는 API 추가 (서버의 /api/video/list/{sessionId} 대응)
+    @GET("api/video/list/{sessionId}")
+    suspend fun getSessionVideos(@Path("sessionId") sessionId: String): Map<String, Any>
 }
