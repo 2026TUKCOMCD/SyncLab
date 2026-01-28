@@ -33,14 +33,28 @@ fun NavGraph(
         navController = navController,
         startDestination = Screen.Login.route
     ) {
+        // NavGraph.kt 내부의 LoginScreen composable 부분 수정
         // 1. 로그인 화면
         composable(route = Screen.Login.route) {
-            LoginScreen(onLoginSuccess = {
-                navController.navigate(Screen.Home.route) {
-                    popUpTo(Screen.Login.route) { inclusive = true }
-                    launchSingleTop = true
+            LoginScreen(
+                onLoginSuccess = {
+                    sharedHomeViewModel.isGuest = false // 회원 로그인
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                },
+                onGuestLogin = { inviteCode ->
+                    // ✅ [중요] 사용자가 입력한 6자리 코드로 세션 참가 로직 실행
+                    sharedHomeViewModel.isGuest = true
+                    sharedHomeViewModel.joinSession(inviteCode)
+
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                        launchSingleTop = true
+                    }
                 }
-            })
+            )
         }
 
         // 2. 홈 화면

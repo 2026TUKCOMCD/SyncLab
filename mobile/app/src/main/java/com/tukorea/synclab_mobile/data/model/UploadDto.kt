@@ -9,8 +9,9 @@ data class InitUploadResponse(
 
 // 2. 서버에 업로드 완료 보고 + 메타데이터를 한 번에 보낼 때 쓰는 요청
 data class CompleteUploadRequest(
+    val sessionId: String,       // ⭐️ 필수 추가: 어느 세션인지 알려줌
     val uploadId: String,
     val videoName: String,
-    val etags: List<String>,        // S3에서 받은 조각별 ETag 목록
-    val metadata: VideoMetadata     // <--- 기존에 만드신 메타데이터를 여기에 포함!
+    val etags: List<String>,
+    val metadata: VideoMetadata
 )

@@ -5,7 +5,9 @@ data class SessionInfo(
     val sessionId: String,
     val sessionName: String,
     val createdAt: String,
-    val participantCount: Int
+    val participantCount: Int,
+    val connectCode: String? = null, // inviteCode 대신 connectCode로 이름 통일
+    val expiresAt: Long? = null
 )
 
 // 영상 처리 상태 정보

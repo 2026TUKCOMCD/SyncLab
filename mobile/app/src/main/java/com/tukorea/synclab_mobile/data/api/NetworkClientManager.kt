@@ -12,7 +12,7 @@ object NetworkClient {
 
     //private const val BASE_URL = "https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/" // 로컬 컴퓨터(FastAPI) 접속 시 에뮬레이터 주소
     //private const val BASE_URL = "https://webhook.site/3404ec0a-088c-4581-9026-26a73a5b4dd3/"
-    private const val BASE_URL = "http://192.168.218.140:8002"
+    private const val BASE_URL = "http://172.28.231.64:8002/"
     private val interceptor = HttpLoggingInterceptor().apply {
         level = HttpLoggingInterceptor.Level.BODY
     }

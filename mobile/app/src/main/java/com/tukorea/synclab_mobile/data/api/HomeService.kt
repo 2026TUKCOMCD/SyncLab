@@ -1,40 +1,53 @@
 package com.tukorea.synclab_mobile.data.api
 
+import com.google.gson.annotations.SerializedName
 import com.tukorea.synclab_mobile.data.model.SessionInfo
 import com.tukorea.synclab_mobile.data.model.VideoStatus
-import retrofit2.http.Body
-import retrofit2.http.GET
-import retrofit2.http.POST
-import retrofit2.http.Path
+import retrofit2.http.*
 
 // --- [데이터 모델 정의] ---
 
-// 1. 서버 응답 규격 (기존 유지)
+/**
+ * 1. 세션 생성/참가 응답
+ */
 data class SessionResponse(
     val status: String,
-    val session: SessionInfo
+    val session: SessionInfo,
+    @SerializedName("temp_code") val tempCode: String? = null, // 서버가 temp_code로 줄 경우 대응
+    @SerializedName("expires_in") val expiresIn: Int? = null
 )
 
-// 2. 홈 전체 데이터를 담는 응답 모델 (새로 추가)
+/**
+ * 2. 임시 코드 검증 응답
+ */
+data class VerifyCodeResponse(
+    val status: String,
+    @SerializedName("session_id") val sessionId: String,
+    val message: String? = null
+)
+
+/**
+ * 3. 홈 데이터 전체 응답 (핵심!)
+ * 여기에 SessionInfo와 VideoStatus가 리스트와 맵 형태로 포함됩니다.
+ */
 data class HomeDataResponse(
-    val current_session: SessionInfo?,
+    val current_session: SessionInfo?, // 서버의 snake_case와 일치시킴
     val history: List<SessionInfo>,
-    val videos: Map<String, List<VideoStatus>>
+    val videos: Map<String, List<VideoStatus>>,
+    val temp_codes: Map<String, Any>? = null
 )
-
-// 3. 서버에 보낼 요청 데이터 (기존 유지)
-data class CreateSessionRequest(val name: String)
-data class JoinSessionRequest(val sessionId: String)
-
-// 4. ViewModel에서 공통으로 사용 중인 요청 모델 (새로 추가)
+/**
+ * 4. 서버 요청용 공통 모델
+ */
 data class SessionActionRequest(
     val name: String? = null,
-    val sessionId: String? = null
+    @SerializedName("session_id") val sessionId: String? = null
 )
 
 // --- [서비스 인터페이스] ---
 
 interface HomeService {
+
     @GET("api/home/data")
     suspend fun getHomeData(): HomeDataResponse
 
@@ -47,7 +60,9 @@ interface HomeService {
     @POST("api/session/join")
     suspend fun joinSession(@Body request: SessionActionRequest): SessionResponse
 
-    // ✅ 특정 세션의 영상 목록을 가져오는 API 추가 (서버의 /api/video/list/{sessionId} 대응)
+    @GET("api/session/verify-code/{code}")
+    suspend fun verifyTempCode(@Path("code") code: String): VerifyCodeResponse
+
     @GET("api/video/list/{sessionId}")
     suspend fun getSessionVideos(@Path("sessionId") sessionId: String): Map<String, Any>
 }
