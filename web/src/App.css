@@ -14,13 +14,104 @@ html, body {
 }
 
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   background-color: #f3f4f6; /* 눈이 편한 연한 회색 */
   color: #333;
   line-height: 1.6;
 }
 
-/* 2. 로그인 & 회원가입 페이지 스타일 (중앙 정렬 카드) */
+/* 2. 메인 화면 페이지 스타일 */
+.hero-section {
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%); /* 파란색 그라데이션 */
+  color: white;
+  padding: 4rem 2rem;
+  border-radius: 16px;
+  text-align: center;
+  margin-bottom: 3rem;
+  box-shadow: 0 10px 15px -3px rgba(37, 99, 235, 0.3);
+}
+
+.hero-title {
+  font-size: 2.5rem;
+  font-weight: 800;
+  margin-bottom: 1rem;
+  letter-spacing: -0.5px;
+}
+
+.hero-description {
+  font-size: 1.1rem;
+  max-width: 700px;
+  margin: 0 auto 2rem auto;
+  line-height: 1.6;
+  opacity: 0.9;
+}
+
+.hero-btn {
+  background-color: white;
+  color: #2563eb;
+  padding: 0.8rem 2rem;
+  border-radius: 50px;
+  font-weight: 700;
+  border: none;
+  cursor: pointer;
+  transition: transform 0.2s, box-shadow 0.2s;
+  font-size: 1rem;
+}
+
+.hero-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+/* --- 메인 페이지: 기술 소개 (3단 그리드) --- */
+.tech-section-title {
+  text-align: center;
+  font-size: 1.8rem;
+  font-weight: 700;
+  margin-bottom: 2rem;
+  color: #1f2937;
+}
+
+.tech-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); /* 반응형 3단 */
+  gap: 2rem;
+  margin-bottom: 4rem;
+}
+
+.tech-card {
+  background: white;
+  padding: 2rem;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.3s ease;
+  text-align: left;
+}
+
+.tech-card:hover {
+  transform: translateY(-5px); /* 마우스 올리면 살짝 뜸 */
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.05);
+  border-color: #bfdbfe;
+}
+
+.tech-icon {
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  display: block;
+}
+
+.tech-card h3 {
+  font-size: 1.25rem;
+  margin-bottom: 0.8rem;
+  color: #1f2937;
+}
+
+.tech-card p {
+  color: #6b7280;
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+/* 3. 로그인 & 회원가입 페이지 스타일 (중앙 정렬 카드) */
 .auth-wrapper {
   display: flex;
   flex-direction: column;
@@ -113,20 +204,25 @@ body {
 /* 3. 메인 페이지 스타일 (헤더 + 컨텐츠) */
 .navbar {
   display: flex;
-  justify-content: space-between;
+  justify-content: flex-end;
   align-items: center;
   background-color: white;
   padding: 1rem 2rem;
   box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-  position: sticky;
-  top: 0;
+  position: relative;
+  height: 70px;
 }
-
-.logo {
-  font-size: 1.5rem;
-  font-weight: 800;
-  color: #2563eb;
-  letter-spacing: -0.5px;
+.nav-logo-center {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+}
+.nav-logo-img{
+  height: 60px;
+  width: auto;
+  cursor: pointer;
 }
 
 .nav-buttons button {
@@ -138,6 +234,7 @@ body {
   cursor: pointer;
   font-weight: 500;
   transition: all 0.2s;
+  font-size: 14px;
 }
 
 .nav-buttons button:hover {
