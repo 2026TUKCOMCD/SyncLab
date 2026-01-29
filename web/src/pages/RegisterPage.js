@@ -39,7 +39,7 @@ function RegisterPage() {
 
     return (
         <div className="auth-wrapper">
-            <img src="/synclab_logo.png" alt="synclab_logo" className="auth-logo"/>
+            <img src="/synclab_logo.png" alt="synclab_logo" className="auth-logo" onClick={() => navigate('/')}/>
             <div className="auth-card">
                 <h2>회원가입</h2>
                 <form onSubmit={handleSignup}>

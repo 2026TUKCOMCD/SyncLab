@@ -44,7 +44,7 @@ function LoginPage() {
 
     return (
         <div className="auth-wrapper"> {/* 전체 감싸기 */}
-            <img src="/synclab_logo.png" alt="Synclab Logo" className="auth-logo" />
+            <img src="/synclab_logo.png" alt="Synclab Logo" className="auth-logo" onClick={() => navigate('/')}/>
             <div className="auth-card">  {/* 흰색 카드 */}
                 <h2>로그인</h2>
                 <form onSubmit={handleLogin}>

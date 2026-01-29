@@ -124,6 +124,7 @@ body {
   max-width: 350px;
   height: auto;
   margin-bottom: 2rem;
+  cursor: pointer;
 }
 .auth-card {
   background: white;

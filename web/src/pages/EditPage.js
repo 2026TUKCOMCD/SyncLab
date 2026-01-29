@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Scissors, Play, Pause, SkipBack, SkipForward, Save, Plus, Theater, Radius } from 'lucide-react';
-
+import {useNavigate} from 'react-router-dom';
 function EditPage() {
 
+  const navigate = useNavigate();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(180);
@@ -286,7 +287,7 @@ function EditPage() {
       {/* 헤더 부분 */}
       <div style={{ backgroundColor: THEME.bgPanel, borderBottom: `1px solid ${THEME.border}`, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <img src="/synclab_logo.png" alt="synclab_logo" style={{maxWidth: '200px', height: '50px'}}/>
+          <img src="/synclab_logo.png" alt="synclab_logo" style={{maxWidth: '200px', height: '50px', cursor:'pointer'}} onClick={() => navigate('/')}/>
         </div>
         <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
           <div style={{ fontSize: '14px', color: 'rgb(0,0,0)' }}>
@@ -376,7 +377,7 @@ function EditPage() {
                           playsInline             // 모바일 대응
                           onLoadedMetadata={(e) => handleVideoLoaded(cam.id, e)}  // 비디오 로드 시
                         />
-                        <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold', backgroundColor: cam.color }}>
+                        <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '4px 8px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold',color:'white', backgroundColor: cam.color }}>
                           {cam.name}
                         </div>
                         {selectedSourceCam === cam.id && (
@@ -439,10 +440,10 @@ function EditPage() {
                       style={{ width: '100%', height: '100%', objectFit: 'contain' }}
                       playsInline
                     />
-                    <div style={{ position: 'absolute', top: '16px', left: '16px', padding: '8px 12px', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', backgroundColor: cameras.find(c => c.id === selectedSourceCam)?.color }}>
+                    <div style={{ color:'white', position: 'absolute', top: '16px', left: '16px', padding: '8px 12px', borderRadius: '6px', fontSize: '14px', fontWeight: 'bold', backgroundColor: cameras.find(c => c.id === selectedSourceCam)?.color }}>
                       {cameras.find(c => c.id === selectedSourceCam)?.name}
                     </div>
-                    <div style={{ position: 'absolute', bottom: '16px', left: '16px', backgroundColor: 'rgba(0,0,0,0.8)', padding: '8px 16px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '24px' }}>
+                    <div style={{ position: 'absolute', bottom: '16px', left: '16px', color:'white', backgroundColor: 'rgba(0,0,0,0.8)', padding: '8px 16px', borderRadius: '6px', fontFamily: 'monospace', fontSize: '24px' }}>
                       {formatTime(currentTime)}
                     </div>
                     {(inPoint !== null || outPoint !== null) && (
