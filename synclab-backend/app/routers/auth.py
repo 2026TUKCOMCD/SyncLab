@@ -64,7 +64,7 @@ def login(user_data: Userlogin, db = Depends(get_db)):
     try:
         sql_check = "SELECT * FROM user WHERE id = %s"
         cursor.execute(sql_check, (user_data.id,))
-        existing_user = cursor.fetchone()
+        existing_user = cursor.fetchone() # 해당 id로 조회된 유저의 모든 정보를 갖고 있는 객체
 
         if not existing_user: # 해당 아이디의 회원이 존재하지 않음
             raise HTTPException(
@@ -76,10 +76,19 @@ def login(user_data: Userlogin, db = Depends(get_db)):
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="비밀번호가 일치하지 않습니다."
                 )
+        sql_check_session_id = "SELECT session_session_id FROM user_session WHERE user_user_id = %s"
+        cursor.execute(sql_check_session_id, (existing_user['user_id'],))
+        existing_user_session = cursor.fetchone()
+
+        if existing_user_session:
+            current_session_id = existing_user_session['session_session_id']
+        else:
+            current_session_id = None
         token_data = {
             "id": existing_user['id'],
-            "user_index": existing_user['user_id'],
-            "user_name": existing_user['user_name']
+            "user_id": existing_user['user_id'],
+            "user_name": existing_user['user_name'],
+            "user_session_id": current_session_id
         }
         access_token = create_access_token(token_data)
 
@@ -87,7 +96,9 @@ def login(user_data: Userlogin, db = Depends(get_db)):
             "message": "로그인 성공",
             "access_token": access_token,
             "token_type": "bearer",
-            "user_name": existing_user['user_name']
+            "user_name": existing_user['user_name'],
+            "user_id": existing_user['user_id'],
+            "user_session_id": current_session_id
         }
 
     except mysql.connector.Error as err:

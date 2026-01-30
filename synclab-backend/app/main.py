@@ -31,6 +31,8 @@ app.include_router(video.router)
 app.include_router(auth.router)
 app.include_router(create_invite_code.router)
 app.include_router(join_invite_code.router)
+
+
 # 시작 이벤트
 @app.on_event("startup")
 async def startup_event():

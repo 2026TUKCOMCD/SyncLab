@@ -27,8 +27,9 @@ function LoginPage() {
             if(response.status == 200){ // 로그인 성공 시
                 const token = response.data.access_token;
                 localStorage.setItem('accessToken', token);
-
+                localStorage.setItem('userID', response.data.user_id);
                 localStorage.setItem('userName', response.data.user_name);
+                localStorage.setItem('user_session_id', response.data.user_session_id);
             }
 
             console.log("로그인 시도:", formData);
