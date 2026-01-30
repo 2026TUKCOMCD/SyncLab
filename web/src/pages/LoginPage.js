@@ -20,7 +20,7 @@ function LoginPage() {
 
         try {
             // 1. FastAPI 서버로 로그인 요청
-            const response = await axios.post('/api/users/login', {
+            const response = await axios.post('/api/web/login', {
                 id: formData.id,
                 password: formData.password
             });

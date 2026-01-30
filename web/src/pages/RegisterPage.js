@@ -21,7 +21,7 @@ function RegisterPage() {
         e.preventDefault();
 
         try{
-            const response = await axios.post('/api/users/signup', {
+            const response = await axios.post('/api/web/signup', {
                 id: formData.id,
                 password: formData.password,
                 user_name: formData.user_name

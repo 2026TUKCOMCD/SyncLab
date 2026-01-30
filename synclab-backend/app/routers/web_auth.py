@@ -1,14 +1,14 @@
-## auth.py는 로그인, 회언가입과 관련된 유저 처리 함수
+# 웹 - 서버 | 회원가입, 로그인 API
+# /api/web/ ~~ 로 경로 지정할 것 ex) /api/web/login
 
 import mysql.connector
 import jwt # JSON Web Token 패키지 -> 사용자의 상태 정보 유지 목적
 from datetime import datetime, timedelta # 시간 계산용
 from fastapi import APIRouter, Depends, HTTPException, status
-from app.database.connection import get_db
 from app.models.schemas import Usercreate, Userlogin
 from app.database.connection import *
 
-router = APIRouter(prefix="/users") # /api/users 로 설정해야 함
+router = APIRouter(prefix="/web") # /api/web 로 설정해야 함
 
 # 토큰 생성 함수
 SECRET_KEY = "my_super_secret_key_synclab" 

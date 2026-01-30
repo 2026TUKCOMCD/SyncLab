@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.routers import video
-from app.routers import auth
+from app.routers import web_video
+from app.routers import web_auth
 from app.routers import create_invite_code, join_invite_code
 from app.database.connection import test_connection
 import os
@@ -27,8 +27,8 @@ app.add_middleware(
 )
 
 # 라우터 등록
-app.include_router(video.router)
-app.include_router(auth.router)
+# app.include_router(web_video.router)
+app.include_router(web_auth.router)
 app.include_router(create_invite_code.router)
 app.include_router(join_invite_code.router)
 

@@ -21,13 +21,12 @@ function EditPage() {
   const timelineRef = useRef(null);
   const animationRef = useRef(null);
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
-  const[session_id] = useState(() => localStorage.getItem('user_session_id'));
-
+  const[session_id] = useState(() => localStorage.getItem('user_session_id')); // 
   const cameras = [
-    { id: 0, name: 'CAM 1', color: '#F87171', videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}` + '/video.mp4'},
-    { id: 1, name: 'CAM 2', color: '#60A5FA', videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}` + '/video2.mp4' },
-    { id: 2, name: 'CAM 3', color: '#34D399', videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}` + '/video3.mp4' },
-    { id: 3, name: 'CAM 4', color: '#FBBF24', videoUrl: 'https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}` + '/video4.mp4' },
+    { id: 0, name: 'CAM 1', color: '#F87171', videoUrl: 'https://synclab-480p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}`},// + `${file_name1}`},
+    { id: 1, name: 'CAM 2', color: '#60A5FA', videoUrl: 'https://synclab-480p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}`},// + `${file_name2}` },
+    { id: 2, name: 'CAM 3', color: '#34D399', videoUrl: 'https://synclab-480p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}`},// + `${file_name3}` },
+    { id: 3, name: 'CAM 4', color: '#FBBF24', videoUrl: 'https://synclab-80p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}`},// + `${file_name4}` },
   ];
 
   useEffect(() => {
@@ -219,14 +218,9 @@ function EditPage() {
     if (videoDuration && !isNaN(videoDuration)) setDuration(videoDuration);
   };
 
-  const handleLogout = () => {
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('userName');
-    window.location.href = '/';
-  };
-
   const totalClipDuration = savedClips.reduce((sum, clip) => sum + clip.duration, 0);
 
+  /* 화면 구성 부분 */
   return (
     <div className="edit-page-container">
       {/* 헤더 부분 */}
