@@ -12,10 +12,10 @@ interface HomeService {
     suspend fun getVideoStatus(): List<VideoStatus>
 
     @POST("api/session/create")
-    suspend fun createSession(@Body request: SessionActionRequest): SessionResponse
+    suspend fun createSession(@Body request: SessionCreateRequest): SessionResponse
 
     @POST("api/session/join")
-    suspend fun joinSession(@Body request: SessionActionRequest): SessionResponse
+    suspend fun joinSession(@Body request: SessionJoinRequest): SessionResponse
 
     @GET("api/session/verify-code/{code}")
     suspend fun verifyTempCode(@Path("code") code: String): VerifyCodeResponse

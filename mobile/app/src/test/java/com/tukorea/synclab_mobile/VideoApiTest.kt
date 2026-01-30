@@ -27,16 +27,15 @@ class VideoApiTest {
         mockWebServer = MockWebServer()
         mockWebServer.start()
 
-        // 1. 네트워크 통신 자체에 타임아웃을 걸어 무한 대기를 방지합니다.
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(3, TimeUnit.SECONDS) // 연결 시도 3초 제한
-            .readTimeout(3, TimeUnit.SECONDS)    // 데이터 읽기 3초 제한
-            .writeTimeout(3, TimeUnit.SECONDS)   // 데이터 쓰기 3초 제한
+            .connectTimeout(3, TimeUnit.SECONDS)
+            .readTimeout(3, TimeUnit.SECONDS)
+            .writeTimeout(3, TimeUnit.SECONDS)
             .build()
 
         val retrofit = Retrofit.Builder()
             .baseUrl(mockWebServer.url("/"))
-            .client(okHttpClient) // 설정한 클라이언트 적용
+            .client(okHttpClient)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
 
@@ -49,7 +48,7 @@ class VideoApiTest {
     }
 
     /**
-     * 시나리오 1: 데이터 규격 검증 (5초 내 종료 보장)
+     * 시나리오 1: 데이터 규격 검증
      */
     @Test(timeout = 5000)
     fun `서버_JSON_전송_데이터_규격_로컬_검증`() = runBlocking {
@@ -58,29 +57,37 @@ class VideoApiTest {
             .setBody("{\"status\":\"success\"}")
         )
 
+        val testSessionId = "SESS-DEBUG-001"
+
         val dummyMetadata = VideoMetadata(
             videoName = "졸작_테스트_영상",
             fileName = "match_01.mp4",
             absoluteStartTime = 1705910000000L,
             absoluteEndTime = 1705915000000L,
-            duration = 5.0
+            duration = 5.0,
+            sessionId = testSessionId
         )
-        val dummyRequest = CompleteUploadRequest("test_123", "match_01.mp4", listOf("e1"), dummyMetadata)
+
+        val dummyRequest = CompleteUploadRequest(
+            sessionId = testSessionId,
+            uploadId = "test_123",
+            videoName = "match_01.mp4",
+            etags = listOf("e1"),
+            metadata = dummyMetadata
+        )
 
         val response = testApiService.completeAndRegister(dummyRequest)
         val recordedRequest = mockWebServer.takeRequest(3, TimeUnit.SECONDS)
 
         assertTrue(response.isSuccessful)
         assertEquals("/api/video/upload/complete", recordedRequest?.path)
-        println("테스트 완료: 데이터가 정상적으로 전송되었습니다.")
     }
 
     /**
-     * 시나리오 2: 응답 지연 발생 시 강제 종료 확인 (5초 내 종료 보장)
+     * 시나리오 2: 응답 지연 발생 시 타임아웃 처리 확인 (partCount 에러 수정)
      */
     @Test(timeout = 5000)
     fun `네트워크_지연_시_타임아웃_처리_검증`() = runBlocking {
-        // 서버가 응답을 10초 동안 주지 않도록 설정
         mockWebServer.enqueue(
             MockResponse()
                 .setBodyDelay(10, TimeUnit.SECONDS)
@@ -88,32 +95,41 @@ class VideoApiTest {
         )
 
         val isTimeoutOccurred = try {
-            // 실제 API 호출 시 위에서 설정한 readTimeout(3초)에 의해 종료됨
-            testApiService.initMultipartUpload("test.mp4", 1)
+            // ⭐️ 에러 해결: 파라미터 이름을 명시하거나 인터페이스 정의 순서 확인
+            // 만약 인터페이스에 sessionId가 필수라면 세 번째 인자도 넣어줘야 합니다.
+            testApiService.initMultipartUpload(
+                filename = "test.mp4",
+                partCount = 1,
+                sessionId = "default_session"
+            )
             false
         } catch (e: Exception) {
-            // SocketTimeoutException 등이 발생하면 성공으로 간주
             println("정상적으로 타임아웃 감지됨: ${e.message}")
             true
         }
 
-        assertTrue("타임아웃 예외가 발생해야 합니다.", isTimeoutOccurred)
+        assertTrue("3초 경과 시 타임아웃 예외가 발생해야 합니다.", isTimeoutOccurred)
     }
 
     /**
-     * 시나리오 3: 물리적 연결 끊김 (즉시 종료)
+     * 시나리오 3: 물리적 연결 단절 상황 (partCount 에러 수정)
      */
     @Test(timeout = 3000)
     fun `물리적_네트워크_단절_시_IOException_발생_확인`() = runBlocking {
         mockWebServer.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
 
         val result = try {
-            testApiService.initMultipartUpload("test.mp4", 3)
+            // ⭐️ 여기도 동일하게 파라미터 규격을 맞춥니다.
+            testApiService.initMultipartUpload(
+                filename = "test.mp4",
+                partCount = 3,
+                sessionId = "default_session"
+            )
             null
         } catch (e: Exception) {
             e
         }
 
-        assertTrue(result is IOException)
+        assertTrue("IOException 계열의 에러가 발생해야 합니다.", result is IOException)
     }
 }

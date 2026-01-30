@@ -7,7 +7,6 @@ import androidx.lifecycle.viewModelScope
 import com.tukorea.synclab_mobile.data.model.SessionInfo
 import com.tukorea.synclab_mobile.data.model.VideoStatus
 import com.tukorea.synclab_mobile.data.repository.HomeRepository
-import com.tukorea.synclab_mobile.data.api.SessionActionRequest
 import kotlinx.coroutines.launch
 
 class HomeViewModel : ViewModel() {
@@ -21,16 +20,21 @@ class HomeViewModel : ViewModel() {
     var currentInviteCode by mutableStateOf("")
     var expiresIn by mutableIntStateOf(0)
 
+    var userPk by mutableIntStateOf(0)
+        private set
     init {
         loadHomeData()
     }
 
+    fun setUserInfo(pk: Int) {
+        userPk = pk
+    }
     fun loadHomeData() {
         viewModelScope.launch {
             try {
                 // NetworkClient를 직접 호출할 때 발생할 수 있는 Exception 방어
                 val response = com.tukorea.synclab_mobile.api.NetworkClient.homeService.getHomeData()
-                currentSession = response.current_session
+                currentSession = response.currentSession
                 sessionHistory = response.history ?: emptyList()
 
                 currentSession?.sessionId?.let { sid ->
@@ -43,10 +47,10 @@ class HomeViewModel : ViewModel() {
     }
 
     // [중요 수정] 세션 생성 시 에러 핸들링 강화
-    fun createSession(name: String) {
+    fun createSession(userPk: Int) {
         viewModelScope.launch {
             try {
-                repository.createNewSession(name).onSuccess { response ->
+                repository.createNewSession("", userPk).onSuccess { response ->
                     if (response.status == "success") {
                         currentSession = response.session
                         currentInviteCode = response.tempCode ?: ""

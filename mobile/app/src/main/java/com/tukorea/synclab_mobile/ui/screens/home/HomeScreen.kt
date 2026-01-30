@@ -70,7 +70,9 @@ fun HomeScreen(
             confirmButton = {
                 Button(onClick = {
                     showCreateDialog = false
-                    viewModel.createSession("새로운 프로젝트 세션")
+                    viewModel.createSession(
+                        userPk = viewModel.userPk // 뷰모델에서 관리하는 유저 PK
+                    )
                 }) { Text("생성") }
             },
             dismissButton = {

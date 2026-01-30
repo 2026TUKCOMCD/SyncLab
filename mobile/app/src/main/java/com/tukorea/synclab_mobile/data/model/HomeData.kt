@@ -42,7 +42,12 @@ data class HomeDataResponse(
     @SerializedName("temp_codes") val tempCodes: Map<String, Any>? = null
 )
 
-data class SessionActionRequest(
-    val name: String? = null,
-    @SerializedName("session_id") val sessionId: String? = null
+data class SessionCreateRequest(
+    @SerializedName("session_id") val sessionId: String? = null,
+    @SerializedName("user_pk") val userPk: Int? = null
 )
+data class SessionJoinRequest(
+    @SerializedName("session_id") val sessionId: String? = null,
+    @SerializedName("user_pk") val userPk: Int? = null
+)
+

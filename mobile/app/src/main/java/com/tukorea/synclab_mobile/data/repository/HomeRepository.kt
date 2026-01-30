@@ -3,9 +3,10 @@ package com.tukorea.synclab_mobile.data.repository
 import android.util.Log
 import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.data.api.HomeService
-import com.tukorea.synclab_mobile.data.api.SessionActionRequest
-import com.tukorea.synclab_mobile.data.api.SessionResponse
-import com.tukorea.synclab_mobile.data.api.VerifyCodeResponse
+import com.tukorea.synclab_mobile.data.model.SessionCreateRequest
+import com.tukorea.synclab_mobile.data.model.SessionJoinRequest
+import com.tukorea.synclab_mobile.data.model.SessionResponse
+import com.tukorea.synclab_mobile.data.model.VerifyCodeResponse
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -16,10 +17,10 @@ class HomeRepository {
     /**
      * [PC/관리자 측면] 세션 생성 + 6자리 임시 코드 수신
      */
-    suspend fun createNewSession(sessionName: String): Result<SessionResponse> {
+    suspend fun createNewSession(sessionId: String, userPk: Int): Result<SessionResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                val request = SessionActionRequest(name = sessionName)
+                val request = SessionCreateRequest(sessionId = sessionId, userPk = userPk)
                 val response = api.createSession(request)
                 Log.d("HomeRepository", "🚀 세션 생성 성공 ID: ${response.session.sessionId}, 코드: ${response.tempCode}")
                 Result.success(response)
@@ -52,7 +53,7 @@ class HomeRepository {
     suspend fun joinSession(sessionId: String): Result<SessionResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                val request = SessionActionRequest(sessionId = sessionId)
+                val request = SessionJoinRequest(sessionId = sessionId)
                 val response = api.joinSession(request)
                 Result.success(response)
             } catch (e: Exception) {

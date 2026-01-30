@@ -8,6 +8,7 @@ data class LoginRequest(
 data class LoginResponse(
     val status: String,
     val userId: String,
+    val userPk: Int,
     val userName: String,
     val currentSessionId: String?, // 현재 참여 중인 세션 ID
     val lastJoinedAt: Long?       // 마지막 참여 시간

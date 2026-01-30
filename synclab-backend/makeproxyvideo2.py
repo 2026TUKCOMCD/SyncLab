@@ -1,7 +1,11 @@
+import os
 import boto3
 import uvicorn
+import static_ffmpeg
+static_ffmpeg.add_paths()
 import ffmpeg
-import os
+import random
+import string
 from fastapi import FastAPI, HTTPException, BackgroundTasks
 from botocore.config import Config
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,7 +15,7 @@ from datetime import datetime
 
 app = FastAPI()
 
-# CORS 설정 // 보안상 차단 되는 것을 허용
+# CORS 설정
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -20,46 +24,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# S3 설정
-S3_BUCKET_ORIGINAL = "synclab-1080p-mp4"  # 원본 버킷
-S3_BUCKET_PROXY = "synclab-480p-mp4"      # 프록시 버킷
+# S3 및 경로 설정
+S3_BUCKET_ORIGINAL = "synclab-1080p-mp4"
+S3_BUCKET_PROXY = "synclab-480p-mp4"
 REGION_NAME = "ap-northeast-2"
-
-# 임시 파일 저장 경로 // ffmepeg 가 실제로 편집하기 위해서는 실제 파일이 필요하므로 저장해서 편집후 , 삭제
 TEMP_DIR = "/tmp/video_processing"
 os.makedirs(TEMP_DIR, exist_ok=True)
 
 s3_client = boto3.client(
     's3',
     region_name=REGION_NAME,
-    aws_access_key_id='키',
-    aws_secret_access_key='키',
+    aws_access_key_id='', 
+    aws_secret_access_key='',
     config=Config(signature_version='s3v4')
 )
 
-# ============================================
-# 임시 DB (세션 기능)
-# ============================================
+# 임시 메모리 DB
 fake_db = {
     "current_session": None,
     "history": [
         {"sessionId": "HIST-001", "sessionName": "1차 필드 테스트", "createdAt": "2026-01-20", "participantCount": 2},
         {"sessionId": "HIST-002", "sessionName": "연구실 실내 측정", "createdAt": "2026-01-22", "participantCount": 5}
     ],
-    "videos": {}  # ✅ 세션별로 영상 관리하도록 변경
+    "videos": {}
 }
 
-
 # ============================================
-# 데이터 모델 // 문자열, 숫자 등등 제대로 된 데이터 전송을 위한 사전정의
+# 데이터 모델
 # ============================================
 class LoginRequest(BaseModel):
     userId: str
     userPw: str
 
-class SessionActionRequest(BaseModel):
-    name: Optional[str] = None
-    sessionId: Optional[str] = None
+class SessionCreateRequest(BaseModel):
+    session_id: Optional[str] = None  
+    user_pk: int
+
+class SessionJoinRequest(BaseModel):
+    invite_code: str
+    user_pk: Optional[int] = None
 
 class VideoMetadata(BaseModel):
     videoName: str
@@ -67,319 +70,207 @@ class VideoMetadata(BaseModel):
     absoluteStartTime: int
     absoluteEndTime: int
     duration: float
-    sessionId: str  # ✅ 추가: 세션 ID
+    sessionId: str
 
 class CompleteUploadRequest(BaseModel):
     uploadId: str
-    videoName: str  # ✅ 이제 "sessionId/filename.mp4" 형태로 들어옴
+    videoName: str
     etags: List[str]
     metadata: VideoMetadata
 
+# ============================================
+# 유틸리티 및 백그라운드 작업
+# ============================================
+def generate_invite_code():
+    return ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
 
-# ============================================
-# 프록시 영상 생성 함수
-# ============================================
 async def create_proxy_video(original_key: str):
-    """S3에서 원본 다운로드 → FFmpeg 변환 → 프록시 업로드"""
+    # original_key 예: "701/SyncLab_...mp4"
+    try:
+        session_id = original_key.split('/')[0]
+        filename = original_key.split('/')[-1]
+    except Exception:
+        print(f"❌ 경로 파싱 실패: {original_key}")
+        return
+
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    original_filename = f"{TEMP_DIR}/{timestamp}_original.mp4"
-    proxy_filename = f"{TEMP_DIR}/{timestamp}_proxy.mp4"
+    # ✅ TEMP_DIR가 존재하는지 다시 확인하고 절대 경로로 생성
+    original_local_path = os.path.join(TEMP_DIR, f"{timestamp}_original.mp4")
+    proxy_local_path = os.path.join(TEMP_DIR, f"{timestamp}_proxy.mp4")
     
-    # ✅ 세션 폴더 구조 유지: "session1/video.mp4" → "session1/video_proxy.mp4"
-    proxy_key = original_key.replace(".mp4", "_proxy.mp4")
+    # S3에서 프록시 버킷에 저장할 경로 (701/filename_proxy.mp4)
+    proxy_s3_key = original_key.replace(".mp4", "_proxy.mp4")
     
     try:
-        print(f"\n{'='*60}")
-        print(f"[1/4] 📥 S3에서 원본 다운로드 중...")
-        print(f"      버킷: {S3_BUCKET_ORIGINAL}")
-        print(f"      파일: {original_key}")
+        # 1. 원본 다운로드
+        s3_client.download_file(S3_BUCKET_ORIGINAL, original_key, original_local_path)
         
-        # 1. S3에서 원본 다운로드
-        s3_client.download_file(
-            S3_BUCKET_ORIGINAL,
-            original_key,
-            original_filename
-        )
-        
-        file_size_mb = os.path.getsize(original_filename) / (1024 * 1024)
-        print(f"      ✅ 다운로드 완료 ({file_size_mb:.2f} MB)")
-        
-        print(f"\n[2/4] 🎬 FFmpeg 변환 시작 (1080p → 480p)")
-        
-        # 2. FFmpeg로 480p 변환
-        stream = ffmpeg.input(original_filename)
+        # 2. FFmpeg 변환
+        # ✅ proxy_local_path가 확실히 문자열로 전달되어야 합니다.
+        stream = ffmpeg.input(original_local_path)
         stream = ffmpeg.output(
-            stream,
-            proxy_filename,
-            vcodec='libx264',
-            acodec='aac',
-            video_bitrate='1M',
-            audio_bitrate='128k',
+            stream, 
+            proxy_local_path,  # 👈 여기가 비어있거나 None이면 "A filename must be provided" 에러 발생
+            vcodec='libx264', acodec='aac',
+            video_bitrate='1M', audio_bitrate='128k',
             vf='scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2',
-            preset='fast',
-            crf=23,
-            movflags='faststart'
+            preset='fast'
         )
         
-        ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)
-        
-        proxy_size_mb = os.path.getsize(proxy_filename) / (1024 * 1024)
-        compression_ratio = (1 - proxy_size_mb / file_size_mb) * 100
-        print(f"      ✅ 변환 완료 ({proxy_size_mb:.2f} MB, {compression_ratio:.1f}% 압축)")
-        
-        print(f"\n[3/4] 📤 S3에 프록시 업로드 중...")
-        print(f"      프록시 경로: {proxy_key}")  # ✅ 경로 출력
+        # 실행
+        ffmpeg.run(stream, overwrite_output=True)
         
         # 3. 프록시 S3 업로드
         s3_client.upload_file(
-            proxy_filename,
-            S3_BUCKET_PROXY,
-            proxy_key,
+            proxy_local_path, S3_BUCKET_PROXY, proxy_s3_key,
             ExtraArgs={'ContentType': 'video/mp4'}
         )
         
-        proxy_url = f"https://{S3_BUCKET_PROXY}.s3.{REGION_NAME}.amazonaws.com/{proxy_key}"
-        print(f"      ✅ 업로드 완료")
-        
-        print(f"\n[4/4] 🗑️  임시 파일 삭제")
-        os.remove(original_filename)
-        os.remove(proxy_filename)
-        
-        print(f"      ✅ 정리 완료")
-        print(f"\n🎉 프록시 영상 생성 완료!")
-        print(f"   프록시 URL: {proxy_url}")
-        print(f"{'='*60}\n")
-        
-    except ffmpeg.Error as e:
-        print(f"\n❌ FFmpeg 에러: {e.stderr.decode('utf8')}")
-        if os.path.exists(original_filename):
-            os.remove(original_filename)
-        if os.path.exists(proxy_filename):
-            os.remove(proxy_filename)
-            
-    except Exception as e:
-        print(f"\n❌ 에러: {str(e)}")
-        if os.path.exists(original_filename):
-            os.remove(original_filename)
-        if os.path.exists(proxy_filename):
-            os.remove(proxy_filename)
+        # 4. DB 상태 업데이트 (중요!)
+        if session_id in fake_db["videos"]:
+            for video in fake_db["videos"][session_id]:
+                if video["fileName"] == filename:
+                    video["status"] = "COMPLETED"
+                    break
+        print(f"✅ 프록시 생성 완료: {proxy_s3_key}")
 
+    except Exception as e:
+        print(f"❌ FFmpeg 변환 실패 ({original_key}): {e}")
+    finally:
+        # 임시 파일 삭제
+        if os.path.exists(original_local_path): os.remove(original_local_path)
+        if os.path.exists(proxy_local_path): os.remove(proxy_local_path)
 
 # ============================================
-# 세션 관련 API
+# API 엔드포인트
 # ============================================
 @app.post("/api/auth/login")
 async def login(request: LoginRequest):
-    """로그인"""
     if request.userId == "111" and request.userPw == "111":
-        return {"status": "success", "message": "로그인 성공", "userName": "테스트 관리자"}
+        return {
+            "status": "success", 
+            "userName": "테스트 관리자",
+            "userId": "111",
+            "userPk": 111,  # ✅ 앱의 LoginResponse 모델과 일치하도록 추가
+            "currentSessionId": None,
+            "lastJoinedAt": None
+        }
     raise HTTPException(status_code=401, detail="인증 실패")
-
-
 @app.get("/api/home/data")
 async def get_home_data():
-    """홈 데이터 조회 (현재 세션 + 히스토리)"""
     return fake_db
 
-
 @app.post("/api/session/create")
-async def create_session(request: SessionActionRequest):
-    """새로운 세션 생성"""
-    session_id = f"SESS-{datetime.now().strftime('%Y%m%d%H%M%S')}"
+async def create_session(request: SessionCreateRequest):
+    # 디버깅: 데이터가 잘 들어왔는지 서버 터미널에서 확인
+    print(f"📥 수신 -> session_id: {request.session_id}, user_pk: {request.user_pk}")
     
+    invite_code = generate_invite_code()
+    # 앱에서 보낸 id가 있으면 쓰고, 없으면 랜덤 생성
+    new_id = request.session_id if request.session_id else str(random.randint(100, 999))
+    
+    # 세션 이름이 따로 안 오므로 ID를 기반으로 생성
+    session_name = f"Session_{new_id}"
+
     new_session = {
-        "sessionId": session_id,
-        "sessionName": request.name or "새로운 세션",
-        "createdAt": datetime.now().strftime("%Y-%m-%d %H:%M"),
-        "participantCount": 1
-    }
-    fake_db["current_session"] = new_session
-    
-    # ✅ 세션별 비디오 목록 초기화
-    fake_db["videos"][session_id] = []
-    
-    return {"status": "success", "session": new_session}
-
-
-@app.post("/api/session/join")
-async def join_session(request: SessionActionRequest):
-    """기존 세션 참가"""
-    joined_session = {
-        "sessionId": request.sessionId or "SESS-JOINED",
-        "sessionName": "참가된 협업 세션",
+        "sessionId": new_id,
+        "sessionName": session_name,
         "createdAt": datetime.now().strftime("%Y-%m-%d"),
-        "participantCount": 4
+        "participantCount": 1,
+        "connectCode": invite_code,
+        "owner_pk": request.user_pk
     }
-    fake_db["current_session"] = joined_session
     
-    # ✅ 세션별 비디오 목록이 없으면 초기화
-    if joined_session["sessionId"] not in fake_db["videos"]:
-        fake_db["videos"][joined_session["sessionId"]] = []
+    # fake_db 업데이트
+    fake_db["history"].append(new_session)
     
-    return {"status": "success", "session": joined_session}
+    return {
+        "status": "success",
+        "session": new_session,
+        "temp_code": invite_code,
+        "expires_in": 600
+    }
 
-
-@app.get("/api/video/status")
-async def get_video_status():
-    """영상 처리 상태 조회"""
-    # ✅ 현재 세션의 비디오만 반환
-    if fake_db["current_session"]:
-        session_id = fake_db["current_session"]["sessionId"]
-        videos = fake_db["videos"].get(session_id, [])
-        
-        for video in videos:
-            if video["status"] == "PROCESSING":
-                video["status"] = "COMPLETED"
-        
-        return videos
-    
-    return []
-
-
-# ============================================
-# 영상 업로드 API
-# ============================================
 @app.get("/api/video/upload/init")
-def init_upload(filename: str, partCount: int, sessionId: str = "default_session"):
-    """[단계 1] S3 멀티파트 업로드 시작 - 세션 폴더에 저장"""
-    
-    # ✅ S3 키에 세션 ID 포함: "sessionId/filename.mp4"
+def init_upload(filename: str, partCount: int, sessionId: str = "default"):
     s3_key = f"{sessionId}/{filename}"
-    
-    print(f"\n📤 [업로드 초기화]")
-    print(f"   세션 ID: {sessionId}")
-    print(f"   파일명: {filename}")
-    print(f"   S3 경로: {s3_key}")
-    
     response = s3_client.create_multipart_upload(
-        Bucket=S3_BUCKET_ORIGINAL,
-        Key=s3_key,  # ✅ 세션 경로 포함
-        ContentType='video/mp4'
+        Bucket=S3_BUCKET_ORIGINAL, Key=s3_key, ContentType='video/mp4'
     )
     upload_id = response['UploadId']
 
     presigned_urls = [
         s3_client.generate_presigned_url(
             ClientMethod='upload_part',
-            Params={
-                'Bucket': S3_BUCKET_ORIGINAL,
-                'Key': s3_key,  # ✅ 세션 경로 포함
-                'UploadId': upload_id,
-                'PartNumber': i
-            },
+            Params={'Bucket': S3_BUCKET_ORIGINAL, 'Key': s3_key, 'UploadId': upload_id, 'PartNumber': i},
             ExpiresIn=3600
         ) for i in range(1, partCount + 1)
     ]
         
-    return {
-        "uploadId": upload_id, 
-        "presignedUrls": presigned_urls,
-        "s3Key": s3_key  # ✅ 프론트엔드에 전달
-    }
-
+    return {"uploadId": upload_id, "presignedUrls": presigned_urls, "s3Key": s3_key}
 
 @app.post("/api/video/upload/complete")
-async def complete_upload(
-    request: CompleteUploadRequest,
-    background_tasks: BackgroundTasks
-):
-    """[단계 2] S3 조각 병합 및 프록시 영상 생성"""
+async def complete_upload(request: CompleteUploadRequest, background_tasks: BackgroundTasks):
     try:
-        # 1. S3 병합
-        parts = [{"PartNumber": i + 1, "ETag": etag} for i, etag in enumerate(request.etags)]
+        # 1. 세션 ID 가져오기 (폴더명으로 사용)
+        session_id = request.metadata.sessionId
+        file_name = request.metadata.fileName
         
+        # 2. S3 통합 경로 설정 (sessionId/filename.mp4)
+        # 만약 앱에서 이미 fullPath를 sessionId/name 형태로 보낸다면 request.videoName을 그대로 써도 되지만,
+        # 안전하게 여기서 직접 조합하는 것이 확실합니다.
+        full_s3_key = f"{session_id}/{file_name}"
+        
+        # 3. S3 멀티파트 업로드 완료 처리
+        parts = [{"PartNumber": i + 1, "ETag": etag} for i, etag in enumerate(request.etags)]
         s3_client.complete_multipart_upload(
-            Bucket=S3_BUCKET_ORIGINAL,
-            Key=request.videoName,  # ✅ "sessionId/filename.mp4" 형태
-            UploadId=request.uploadId,
+            Bucket=S3_BUCKET_ORIGINAL, 
+            Key=full_s3_key,  # ✅ 수정: 통합된 경로 사용
+            UploadId=request.uploadId, 
             MultipartUpload={'Parts': parts}
         )
         
-        print(f"\n✅ [원본 업로드 완료]")
-        print(f"   경로: {request.videoName}")
-        print(f"   세션: {request.metadata.sessionId}")
-        print(f"   시작 시간: {request.metadata.absoluteStartTime}")
-        print(f"   재생 길이: {request.metadata.duration}초")
-        
-        # 2. DB에 비디오 추가 (세션별로)
+        # 4. DB 객체 생성
         new_video = {
             "videoId": f"VID-{datetime.now().strftime('%M%S')}",
-            "fileName": request.metadata.fileName,  # 파일명만
-            "fullPath": request.videoName,  # 전체 경로 (sessionId/filename.mp4)
-            "status": "PROCESSING",
+            "fileName": file_name,
+            "fullPath": full_s3_key,  # ✅ 수정: 전체 경로 저장
+            "status": "PROCESSING",   # 프록시 생성 중 상태
             "timestamp": int(datetime.now().timestamp()),
-            "duration": request.metadata.duration,
-            "absoluteStartTime": request.metadata.absoluteStartTime,
-            "absoluteEndTime": request.metadata.absoluteEndTime
+            "duration": request.metadata.duration
         }
         
-        # ✅ 세션별 비디오 목록에 추가
-        session_id = request.metadata.sessionId
+        # 5. 메모리 DB 저장
         if session_id not in fake_db["videos"]:
             fake_db["videos"][session_id] = []
-        
         fake_db["videos"][session_id].insert(0, new_video)
         
-        # 3. 백그라운드에서 프록시 생성
-        background_tasks.add_task(create_proxy_video, request.videoName)
+        # 6. 백그라운드 작업 시작 (프록시 생성)
+        # 전체 경로(full_s3_key)를 넘겨줘야 FFmpeg가 파일을 찾을 수 있습니다.
+        background_tasks.add_task(create_proxy_video, full_s3_key)
         
-        return {
-            "status": "success",
-            "message": "원본 업로드 완료. 프록시 생성 중...",
-            "original_url": f"https://{S3_BUCKET_ORIGINAL}.s3.{REGION_NAME}.amazonaws.com/{request.videoName}",
-            "s3_path": request.videoName  # ✅ 전체 경로 반환
-        }
+        return {"status": "success", "s3_path": full_s3_key}
 
     except Exception as e:
-        print(f"\n❌ [에러] {str(e)}")
+        print(f"❌ 업로드 완료 처리 중 에러 발생: {e}")
         raise HTTPException(status_code=500, detail=str(e))
-
-
+    
 @app.get("/api/video/proxy/check/{sessionId}/{filename}")
 async def check_proxy_exists(sessionId: str, filename: str):
-    """프록시 영상 존재 여부 확인"""
-    # ✅ 세션 경로 포함
-    original_key = f"{sessionId}/{filename}"
-    proxy_key = original_key.replace(".mp4", "_proxy.mp4")
-    
-    print(f"\n🔍 [프록시 확인] {proxy_key}")
-    
+    proxy_key = f"{sessionId}/{filename}".replace(".mp4", "_proxy.mp4")
     try:
         response = s3_client.head_object(Bucket=S3_BUCKET_PROXY, Key=proxy_key)
-        
         return {
             "status": "completed",
             "proxy_url": f"https://{S3_BUCKET_PROXY}.s3.{REGION_NAME}.amazonaws.com/{proxy_key}",
             "file_size_mb": round(response['ContentLength'] / (1024 * 1024), 2)
         }
-    except s3_client.exceptions.NoSuchKey:
+    except:
         return {"status": "not_found"}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
 
-
-# ✅ 새로운 API: 세션별 영상 목록 조회
 @app.get("/api/video/list/{sessionId}")
 async def list_session_videos(sessionId: str):
-    """특정 세션의 모든 영상 조회"""
-    videos = fake_db["videos"].get(sessionId, [])
-    
-    return {
-        "sessionId": sessionId,
-        "videos": videos,
-        "count": len(videos)
-    }
+    return {"sessionId": sessionId, "videos": fake_db["videos"].get(sessionId, [])}
 
-
-# ============================================
-# 서버 실행
-# ============================================
 if __name__ == "__main__":
-    print("╔════════════════════════════════════════╗")
-    print("║   🚀 SyncLab FastAPI 서버 시작         ║")
-    print("╚════════════════════════════════════════╝")
-    print(f"   원본 버킷: {S3_BUCKET_ORIGINAL}")
-    print(f"   프록시 버킷: {S3_BUCKET_PROXY}")
-    print(f"   임시 저장: {TEMP_DIR}")
-    print("="*60)
     uvicorn.run(app, host="0.0.0.0", port=8002)
