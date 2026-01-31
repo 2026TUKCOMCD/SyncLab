@@ -1,7 +1,3 @@
-## 모바일 - 서버 | 세션 생성 요청, 세션 참가 요청 API
-## /api/mobile/ ~~ 로 경로 지정할 것 ex) /api/mobile/create_session
-
-
 # app/routers/mobile_session.py
 """
 모바일 - 서버 | 세션 생성 요청, 세션 참가 요청 API
@@ -11,21 +7,16 @@ import random
 import string
 from fastapi import APIRouter, HTTPException
 from app.database.connection import get_db_connection
-from pydantic import BaseModel
+from app.models.schemas import SessionActionRequest  # ✅ schemas.py 사용
 from typing import Optional
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/api/mobile", tags=["Mobile-Session"])
 
 
 # ============================================
-# 데이터 모델
+# 추가 모델 (schemas.py에 없는 것만)
 # ============================================
-
-class SessionCreateRequest(BaseModel):
-    """세션 생성 요청"""
-    name: Optional[str] = "새로운 세션"
-    user_pk: int  # 생성자 ID
-
 
 class SessionJoinRequest(BaseModel):
     """세션 참가 요청"""
@@ -47,7 +38,7 @@ def generate_invite_code() -> str:
 # ============================================
 
 @router.post("/create_session")
-async def create_session(request: SessionCreateRequest):
+async def create_session(request: SessionActionRequest):  # ✅ schemas.py 모델 사용
     """
     세션 생성
     - 새로운 세션 생성
@@ -55,8 +46,13 @@ async def create_session(request: SessionCreateRequest):
     - 생성자를 참가자로 자동 등록
     
     경로: POST /api/mobile/create_session
+    요청: {"name": "세션 이름"} (Optional)
     """
     invite_code = generate_invite_code()
+    
+    # ✅ SessionActionRequest는 name만 있음 (user_pk 제거)
+    # user_pk는 나중에 JWT에서 추출하도록 변경 필요
+    default_user_pk = 1  # 임시 기본값
     
     try:
         with get_db_connection() as conn:
@@ -67,7 +63,7 @@ async def create_session(request: SessionCreateRequest):
                 INSERT INTO session (session_name, invite_code)
                 VALUES (%s, %s)
             """
-            cursor.execute(sql_session, (request.name, invite_code))
+            cursor.execute(sql_session, (request.name or "새로운 세션", invite_code))
             
             # 2. 생성된 session_id 가져오기 (AUTO_INCREMENT)
             new_session_id = cursor.lastrowid
@@ -77,7 +73,7 @@ async def create_session(request: SessionCreateRequest):
                 INSERT INTO user_session (session_session_id, user_user_id)
                 VALUES (%s, %s)
             """
-            cursor.execute(sql_user_session, (new_session_id, request.user_pk))
+            cursor.execute(sql_user_session, (new_session_id, default_user_pk))
             
             conn.commit()
             cursor.close()
@@ -86,8 +82,11 @@ async def create_session(request: SessionCreateRequest):
             "status": "success",
             "session": {
                 "sessionId": str(new_session_id),
+                "sessionName": request.name or "새로운 세션",
                 "connectCode": invite_code
-            }
+            },
+            "temp_code": invite_code,
+            "expires_in": 3600
         }
     
     except Exception as e:
@@ -103,6 +102,7 @@ async def join_session(request: SessionJoinRequest):
     - 비회원은 세션 정보만 반환
     
     경로: POST /api/mobile/join_session
+    요청: {"invite_code": "ABC12345", "user_pk": 1} (user_pk는 Optional)
     """
     try:
         with get_db_connection() as conn:
@@ -110,7 +110,7 @@ async def join_session(request: SessionJoinRequest):
             
             # 1. 초대 코드로 session_id 조회
             cursor.execute(
-                "SELECT session_id FROM session WHERE invite_code = %s",
+                "SELECT session_id, session_name FROM session WHERE invite_code = %s",
                 (request.invite_code,)
             )
             session = cursor.fetchone()
@@ -141,7 +141,11 @@ async def join_session(request: SessionJoinRequest):
             
             return {
                 "status": "success",
-                "session_id": str(session['session_id'])
+                "session_id": str(session['session_id']),
+                "session": {
+                    "sessionId": str(session['session_id']),
+                    "sessionName": session['session_name']
+                }
             }
     
     except HTTPException:
