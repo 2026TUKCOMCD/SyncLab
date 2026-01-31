@@ -1,6 +1,7 @@
+
 # app/models/schemas.py
 """
-¸ğµç Pydantic ¸ğµ¨ Á¤ÀÇ (API ¸í¼¼ ±â¹İ)
+ëª¨ë“  Pydantic ëª¨ë¸ ì •ì˜ (API ëª…ì„¸ ê¸°ë°˜)
 """
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
@@ -9,11 +10,11 @@ from enum import Enum
 
 
 # ============================================
-# Enum Á¤ÀÇ
+# Enum ì •ì˜
 # ============================================
 
 class VideoStatus(str, Enum):
-    """¿µ»ó Ã³¸® »óÅÂ"""
+    """ì˜ìƒ ì²˜ë¦¬ ìƒíƒœ"""
     PENDING = "pending"
     UPLOADED = "uploaded"
     PROCESSING = "processing"
@@ -23,69 +24,69 @@ class VideoStatus(str, Enum):
 
 
 # ============================================
-# ÀÎÁõ °ü·Ã (À¥)
+# ì¸ì¦ ê´€ë ¨ (ì›¹)
 # ============================================
 
 class Usercreate(BaseModel):
-    """È¸¿ø°¡ÀÔ ¿äÃ»"""
+    """íšŒì›ê°€ì… ìš”ì²­"""
     id: str
     password: str
     user_name: str
 
 
 class Userlogin(BaseModel):
-    """·Î±×ÀÎ ¿äÃ»"""
+    """ë¡œê·¸ì¸ ìš”ì²­"""
     id: str
     password: str
 
 
 class LoginResponse(BaseModel):
-    """·Î±×ÀÎ °á°ú"""
+    """ë¡œê·¸ì¸ ê²°ê³¼"""
     status: str
     message: str
     userName: str
 
 
 # ============================================
-# ¼¼¼Ç °ü·Ã (¸ğ¹ÙÀÏ)
+# ì„¸ì…˜ ê´€ë ¨ (ëª¨ë°”ì¼)
 # ============================================
 
 class SessionActionRequest(BaseModel):
-    """¼¼¼Ç »ı¼º/Âü°¡ ¿äÃ»"""
+    """ì„¸ì…˜ ìƒì„±/ì°¸ê°€ ìš”ì²­"""
     name: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
-    """¼¼¼Ç °á°ú"""
+    """ì„¸ì…˜ ê²°ê³¼"""
     status: str
-    session: Dict[str, Any]  # sessionInfo ±Ô°İ
+    session: Dict[str, Any]
     temp_code: Optional[str] = None
     expires_in: Optional[int] = None
 
 
 class VerifyCodeResponse(BaseModel):
-    """ÄÚµå °ËÁõ °á°ú"""
+    """ì½”ë“œ ê²€ì¦ ê²°ê³¼"""
     status: str
     session_id: str
 
 
 # ============================================
-# È¨ µ¥ÀÌÅÍ
+# í™ˆ ë°ì´í„°
 # ============================================
 
 class HomeDataResponse(BaseModel):
-    """È¨ µ¥ÀÌÅÍ"""
+    """í™ˆ ë°ì´í„°"""
     current_session: Optional[Dict[str, Any]] = None
-    history: List[Dict[str, Any]]  # SessionInfo ¸®½ºÆ®
-    videos: Optional[Dict[str, List[Any]]] = None  # ¼¼¼Çº° ¿µ»ó
+    history: List[Dict[str, Any]]
+    videos: Optional[Dict[str, List[Any]]] = None
 
 
 # ============================================
-# ¿µ»ó ¾÷·Îµå °ü·Ã (¸ğ¹ÙÀÏ)
+# ì˜ìƒ ì—…ë¡œë“œ ê´€ë ¨ (ëª¨ë°”ì¼)
 # ============================================
 
 class VideoMetadata(BaseModel):
-    """¿µ»ó ¸ŞÅ¸µ¥ÀÌÅÍ (³»ºÎ¿¡ »ó¼¼ Á¤º¸ Æ÷ÇÔ)"""
+    """ì˜ìƒ ë©”íƒ€ë°ì´í„°"""
     videoName: str
     fileName: str
     absoluteStartTime: int
@@ -94,7 +95,7 @@ class VideoMetadata(BaseModel):
 
 
 class CompleteUploadRequest(BaseModel):
-    """¾÷·Îµå ¿Ï·á ¿äÃ»"""
+    """ì—…ë¡œë“œ ì™„ë£Œ ìš”ì²­"""
     sessionId: str
     uploadId: str
     videoName: str
@@ -103,14 +104,14 @@ class CompleteUploadRequest(BaseModel):
 
 
 class UploadInitResponse(BaseModel):
-    """¾÷·Îµå ÃÊ±âÈ­ ÀÀ´ä"""
+    """ì—…ë¡œë“œ ì´ˆê¸°í™” ì‘ë‹µ"""
     uploadId: str
     presignedUrls: List[str]
     s3Key: str
 
 
 class CompleteUploadResponse(BaseModel):
-    """¾÷·Îµå ¿Ï·á ÀÀ´ä"""
+    """ì—…ë¡œë“œ ì™„ë£Œ ì‘ë‹µ"""
     status: str
     message: str
     s3_path: str
@@ -118,11 +119,11 @@ class CompleteUploadResponse(BaseModel):
 
 
 # ============================================
-# ÇÁ·Ï½Ã Ã¼Å©
+# í”„ë¡ì‹œ ì²´í¬
 # ============================================
 
 class ProxyCheckResponse(BaseModel):
-    """ÇÁ·Ï½Ã Ã¼Å© ÀÀ´ä (Direct JSON)"""
+    """í”„ë¡ì‹œ ì²´í¬ ì‘ë‹µ"""
     status: str
     ready: Optional[bool] = None
     proxy_url: Optional[str] = None
@@ -130,11 +131,11 @@ class ProxyCheckResponse(BaseModel):
 
 
 # ============================================
-# ±âÁ¸ ¸ğµ¨ (È£È¯¼º À¯Áö)
+# ê¸°ì¡´ ëª¨ë¸ (í˜¸í™˜ì„± ìœ ì§€)
 # ============================================
 
 class PresignedUrlRequest(BaseModel):
-    """Presigned URL ¿äÃ»"""
+    """Presigned URL ìš”ì²­"""
     sessionId: str = Field(..., min_length=1, max_length=100)
     cameraId: int = Field(..., ge=1)
     fileName: str = Field(..., min_length=1)
@@ -143,7 +144,7 @@ class PresignedUrlRequest(BaseModel):
 
 
 class PresignedUrlResponse(BaseModel):
-    """Presigned URL ÀÀ´ä"""
+    """Presigned URL ì‘ë‹µ"""
     success: bool
     uploadUrl: str
     videoId: int
@@ -153,7 +154,7 @@ class PresignedUrlResponse(BaseModel):
 
 
 class VideoInfo(BaseModel):
-    """¿µ»ó Á¤º¸"""
+    """ì˜ìƒ ì •ë³´"""
     id: int
     session_id: str
     camera_id: int
@@ -166,7 +167,7 @@ class VideoInfo(BaseModel):
 
 
 class ProxyRequest(BaseModel):
-    """ÇÁ·Ï½Ã »ı¼º ¿äÃ»"""
+    """í”„ë¡ì‹œ ìƒì„± ìš”ì²­"""
     video_id: int
     target_resolution: str = "1280x720"
     crf: int = Field(default=23, ge=0, le=51)

@@ -10,11 +10,18 @@ mysql-connector-python
 # AWS S3
 boto3
 
+# 비디오 처리
+ffmpeg-python==0.2.0
+static-ffmpeg==2.5
+
 # 영상 처리
 ffmpeg-python
 
 # 유틸리티
 python-dotenv
+
+# 인증
+PyJWT==2.8.0
 
 # 로깅
 loguru==0.7.2
