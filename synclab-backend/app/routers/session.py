@@ -1,11 +1,8 @@
-## 모바일 - 서버 | 세션 생성 요청, 세션 참가 요청 API
-## /api/mobile/ ~~ 로 경로 지정할 것 ex) /api/mobile/create_session
-
-
-# app/routers/mobile_session.py
+# app/routers/session.py
 """
-모바일 - 서버 | 세션 생성 요청, 세션 참가 요청 API
-경로: /api/mobile/
+세션 생성 및 참가 API
+- 세션 생성 (초대 코드 발급)
+- 세션 참가 (초대 코드로 입장)
 """
 import random
 import string
@@ -14,7 +11,7 @@ from app.database.connection import get_db_connection
 from pydantic import BaseModel
 from typing import Optional
 
-router = APIRouter(prefix="/api/mobile", tags=["Mobile-Session"])
+router = APIRouter(prefix="/api/session", tags=["Session"])
 
 
 # ============================================
@@ -46,15 +43,13 @@ def generate_invite_code() -> str:
 # API 엔드포인트
 # ============================================
 
-@router.post("/create_session")
+@router.post("/create")
 async def create_session(request: SessionCreateRequest):
     """
     세션 생성
     - 새로운 세션 생성
     - 초대 코드(invite_code) 발급
     - 생성자를 참가자로 자동 등록
-    
-    경로: POST /api/mobile/create_session
     """
     invite_code = generate_invite_code()
     
@@ -94,15 +89,13 @@ async def create_session(request: SessionCreateRequest):
         raise HTTPException(status_code=500, detail=f"세션 생성 실패: {str(e)}")
 
 
-@router.post("/join_session")
+@router.post("/join")
 async def join_session(request: SessionJoinRequest):
     """
     세션 참가
     - 초대 코드로 세션 찾기
     - 회원인 경우만 참가자 명단에 등록
     - 비회원은 세션 정보만 반환
-    
-    경로: POST /api/mobile/join_session
     """
     try:
         with get_db_connection() as conn:
@@ -145,6 +138,7 @@ async def join_session(request: SessionJoinRequest):
             }
     
     except HTTPException:
+        # HTTPException은 그대로 전달
         raise
     
     except Exception as e:
