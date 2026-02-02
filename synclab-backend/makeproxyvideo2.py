@@ -144,7 +144,7 @@ async def create_proxy_video(original_key: str):
 # ============================================
 # API 엔드포인트
 # ============================================
-@app.post("/api/auth/login")
+@app.post("/api/mobile/auth/login")
 async def login(request: LoginRequest):
     if request.userId == "111" and request.userPw == "111":
         return {
@@ -156,11 +156,11 @@ async def login(request: LoginRequest):
             "lastJoinedAt": None
         }
     raise HTTPException(status_code=401, detail="인증 실패")
-@app.get("/api/home/data")
+@app.get("/api/mobile/home/data")
 async def get_home_data():
     return fake_db
 
-@app.post("/api/session/create")
+@app.post("/api/mobile/session/create")
 async def create_session(request: SessionCreateRequest):
     # 디버깅: 데이터가 잘 들어왔는지 서버 터미널에서 확인
     print(f"📥 수신 -> session_id: {request.session_id}, user_pk: {request.user_pk}")
@@ -191,7 +191,7 @@ async def create_session(request: SessionCreateRequest):
         "expires_in": 600
     }
 
-@app.get("/api/video/upload/init")
+@app.get("/api/mobile/video/upload/init")
 def init_upload(filename: str, partCount: int, sessionId: str = "default"):
     s3_key = f"{sessionId}/{filename}"
     response = s3_client.create_multipart_upload(
@@ -209,7 +209,7 @@ def init_upload(filename: str, partCount: int, sessionId: str = "default"):
         
     return {"uploadId": upload_id, "presignedUrls": presigned_urls, "s3Key": s3_key}
 
-@app.post("/api/video/upload/complete")
+@app.post("/api/mobile/video/upload/complete")
 async def complete_upload(request: CompleteUploadRequest, background_tasks: BackgroundTasks):
     try:
         # 1. 세션 ID 가져오기 (폴더명으로 사용)
@@ -255,7 +255,7 @@ async def complete_upload(request: CompleteUploadRequest, background_tasks: Back
         print(f"❌ 업로드 완료 처리 중 에러 발생: {e}")
         raise HTTPException(status_code=500, detail=str(e))
     
-@app.get("/api/video/proxy/check/{sessionId}/{filename}")
+@app.get("/api/mobile/video/proxy/check/{sessionId}/{filename}")
 async def check_proxy_exists(sessionId: str, filename: str):
     proxy_key = f"{sessionId}/{filename}".replace(".mp4", "_proxy.mp4")
     try:
@@ -268,7 +268,7 @@ async def check_proxy_exists(sessionId: str, filename: str):
     except:
         return {"status": "not_found"}
 
-@app.get("/api/video/list/{sessionId}")
+@app.get("/api/mobile/video/list/{sessionId}")
 async def list_session_videos(sessionId: str):
     return {"sessionId": sessionId, "videos": fake_db["videos"].get(sessionId, [])}
 
