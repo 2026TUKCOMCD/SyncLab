@@ -49,7 +49,7 @@ function MainPage() {
 
         {/* 섹션 A: 프로젝트 소개 & 로그인 유도 (Hero Section) */}
         <div className="hero-section">
-          <h1 className="hero-title">다양한 시각, 완벽한 동기화... 편집을 곁들인</h1>
+          <h1 className="hero-title">다양한 시각, 완벽한 동기화된 편집</h1>
           <p className="hero-description">
             SyncLab은 스마트폰으로 촬영한 다각도 영상을 하나의 영상으로 편집하는 플랫폼입니다.<br />
             지금 바로 시작하여 여러분만의 편집 영상을 생성해 보세요!

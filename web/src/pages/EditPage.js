@@ -1,7 +1,8 @@
 import { Scissors, Play, Pause, SkipBack, SkipForward, Save, Plus, Theater, Radius } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
-import React, { useState, useRef, useEffect } from 'react'; 
+import axios from 'axios'
+import React, { useState, useRef, useEffect } from 'react';
 // useEffect()는 화면이 구성된 뒤에 실행되어 재랜더링 하는 방식이지만 
 // useState는 랜더링 이전에 수행되어 불필요한 랜더링이 발생하지 않음.
 
@@ -21,13 +22,41 @@ function EditPage() {
   const timelineRef = useRef(null);
   const animationRef = useRef(null);
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
-  const[session_id] = useState(() => localStorage.getItem('user_session_id')); // 
-  const cameras = [
-    { id: 0, name: 'CAM 1', color: '#F87171', videoUrl: 'https://synclab-480p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}`},// + `${file_name1}`},
-    { id: 1, name: 'CAM 2', color: '#60A5FA', videoUrl: 'https://synclab-480p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}`},// + `${file_name2}` },
-    { id: 2, name: 'CAM 3', color: '#34D399', videoUrl: 'https://synclab-480p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}`},// + `${file_name3}` },
-    { id: 3, name: 'CAM 4', color: '#FBBF24', videoUrl: 'https://synclab-80p-mp4.s3.ap-northeast-2.amazonaws.com/' + `${session_id}`},// + `${file_name4}` },
-  ];
+  const [cameras, setCameras] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const colors = ['#F87171', '#60A5FA', '#34D399', '#FBBF24'];
+
+  useEffect(() => {
+    const fetchVideos = async () => {
+      const token = localStorage.getItem('accessToken');
+      console.log("현재 토큰:", token);
+      if (!token) {
+        alert("로그인이 필요합니다.");
+        navigate("/login");
+      }
+      // GET 요청 수행
+      try {
+        const response = await axios.get('http://localhost:8000/api/web/list', {
+          headers: {
+            Authorization: `Bearer ${token}` // Header에 토큰 값 실어서 보내기
+          }
+        });
+        console.log("서버 응답: ", response.data);
+        setCameras(response.data.videos);
+      }
+      catch (error) {
+        console.error('네트워크 에러:', error);
+
+        if(error.response && error.response.status == 401){
+          alert("인증이 만료되었습니다. 다시 로그인해주세요.");
+        }
+      }
+      finally {
+        setLoading(false);
+      }
+    };
+    fetchVideos();
+  }, []);
 
   useEffect(() => {
     if (isDraggingIn || isDraggingOut) {
@@ -39,7 +68,7 @@ function EditPage() {
       };
     }
   }, [isDraggingIn, isDraggingOut]);
-  
+
   useEffect(() => {
     if (isPlaying && selectedSourceCam !== null) {
       const updateTime = () => {
@@ -226,7 +255,7 @@ function EditPage() {
       {/* 헤더 부분 */}
       <div className="header-container">
         <div className="header-left">
-          <img src="/synclab_logo.png" alt="synclab_logo" className="logo-img" onClick={() => navigate('/')}/>
+          <img src="/synclab_logo.png" alt="synclab_logo" className="logo-img" onClick={() => navigate('/')} />
         </div>
         <div className="header-right">
           <div className="header-info-text">
@@ -243,38 +272,90 @@ function EditPage() {
       <div className="main-content">
         {/* 좌측 사이드 바 */}
         <div className="sidebar">
-          <h2 className="section-title">📁 리소스 보관함</h2>
+          <h2 className="section-title">
+            📁 리소스 보관함
+            {/* (선택사항) 개수 표시 */}
+            <span style={{ fontSize: '0.8em', marginLeft: '8px', color: '#666' }}>
+              ({cameras.length})
+            </span>
+          </h2>
+
           <div className="resource-list">
-            {cameras.map((cam) => (
-              <div
-                key={cam.id}
-                className="resource-item"
-                style={{
-                  opacity: multiviewCameras.some(c => c?.id === cam.id) ? 0.5 : 1,
-                  border: multiviewCameras.some(c => c?.id === cam.id) ? '2px solid #10b981' : 'none'
-                }}
-                onClick={() => addCameraToMultiview(cam)}
-              >
-                <div className="video-thumb-wrapper">
-                  {cam.videoUrl ? (
-                    <video
-                      src={`${cam.videoUrl}#t=0.1`}
-                      muted
-                      className="video-thumb"
-                      preload="metadata"
-                    />
-                  ) : (
-                    <div className="video-placeholder">🎥</div>
-                  )}
-                  {multiviewCameras.some(c => c?.id === cam.id) && (
-                    <div className="check-badge">✓</div>
-                  )}
-                </div>
+            {/* 1. 카메라 목록이 비어있을 경우 처리 */}
+            {cameras.length === 0 ? (
+              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
+                저장된 영상이 없습니다.
               </div>
-            ))}
+            ) : (
+              /* 2. 카메라 목록 매핑 */
+              cameras.map((cam) => {
+                // 현재 이 카메라가 멀티뷰에 선택되었는지 확인
+                const isSelected = multiviewCameras.some((c) => c?.id === cam.id);
+
+                return (
+                  <div
+                    key={cam.id}
+                    className="resource-item"
+                    style={{
+                      // 선택된 경우 투명도와 테두리 스타일 적용
+                      opacity: isSelected ? 0.5 : 1,
+                      border: isSelected ? '2px solid #10b981' : '1px solid #eee',
+                      cursor: 'pointer',
+                      marginBottom: '10px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      backgroundColor: '#fff'
+                    }}
+                    onClick={() => addCameraToMultiview(cam)}
+                  >
+                    {/* 비디오 썸네일 영역 */}
+                    <div className="video-thumb-wrapper" style={{ position: 'relative', width: '100%', height: '100px', backgroundColor: '#000' }}>
+                      {cam.videoUrl ? (
+                        <video
+                          src={`${cam.videoUrl}#t=0.1`} // 0.1초 지점 썸네일 사용
+                          className="video-thumb"
+                          preload="metadata"
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          // 마우스 올리면 재생, 떼면 멈춤 (선택사항 효과)
+                          onMouseOver={e => e.target.play()}
+                          onMouseOut={e => e.target.pause()}
+                          muted
+                        />
+                      ) : (
+                        <div className="video-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#fff' }}>
+                          🎥
+                        </div>
+                      )}
+
+                      {/* 선택됨 체크 표시 */}
+                      {isSelected && (
+                        <div className="check-badge" style={{
+                          position: 'absolute', top: '5px', right: '5px',
+                          backgroundColor: '#10b981', color: 'white',
+                          borderRadius: '50%', width: '20px', height: '20px',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontSize: '12px'
+                        }}>
+                          ✓
+                        </div>
+                      )}
+                    </div>
+
+                    {/* [추가됨] 비디오 정보 텍스트 (이름, 파일명) */}
+                    <div style={{ padding: '8px' }}>
+                      <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '2px' }}>
+                        {cam.name} {/* 예: CAM 1 */}
+                      </div>
+                      <div style={{ fontSize: '11px', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {cam.file_name} {/* 예: cam_01_session2.mp4 */}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
           </div>
         </div>
-
         {/* 멀티뷰 & 프로그램 모니터 */}
         <div className="workspace-area">
           <div className="monitor-section">
@@ -443,7 +524,7 @@ function EditPage() {
                 </div>
                 <div className="timeline-track" ref={timelineRef} onClick={handleTimelineClick}>
                   <div className="track-bg" style={{ backgroundColor: cameras.find(c => c.id === selectedSourceCam)?.color }} />
-                  
+
                   {savedClips.map((clip) => (
                     <div
                       key={clip.id}
