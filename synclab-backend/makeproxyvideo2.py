@@ -156,11 +156,11 @@ async def login(request: LoginRequest):
             "lastJoinedAt": None
         }
     raise HTTPException(status_code=401, detail="인증 실패")
-@app.get("/api/home/data")
+@app.get("/api/mobile/home/data")
 async def get_home_data():
     return fake_db
 
-@app.post("/api/session/create")
+@app.post("/api/mobile/session/create")
 async def create_session(request: SessionCreateRequest):
     # 디버깅: 데이터가 잘 들어왔는지 서버 터미널에서 확인
     print(f"📥 수신 -> session_id: {request.session_id}, user_pk: {request.user_pk}")
