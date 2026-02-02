@@ -21,7 +21,7 @@ from app.models.schemas import (  # ✅ schemas.py 사용
     ProxyCheckResponse
 )
 
-router = APIRouter(prefix="/api/mobile", tags=["Mobile-Video"])
+router = APIRouter(prefix="/api/mobile/video", tags=["Mobile-Video"])
 
 # S3 및 경로 설정
 S3_BUCKET_ORIGINAL = os.getenv("S3_BUCKET_ORIGINAL", "synclab-1080p-mp4")

@@ -11,7 +11,7 @@ from app.models.schemas import SessionActionRequest  # ✅ schemas.py 사용
 from typing import Optional
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/mobile", tags=["Mobile-Session"])
+router = APIRouter(prefix="/api/mobile/session", tags=["Mobile-Session"])
 
 
 # ============================================
@@ -37,7 +37,7 @@ def generate_invite_code() -> str:
 # API 엔드포인트
 # ============================================
 
-@router.post("/create_session")
+@router.post("/create")
 async def create_session(request: SessionActionRequest):  # ✅ schemas.py 모델 사용
     """
     세션 생성
@@ -45,7 +45,7 @@ async def create_session(request: SessionActionRequest):  # ✅ schemas.py 모�
     - 초대 코드(invite_code) 발급
     - 생성자를 참가자로 자동 등록
     
-    경로: POST /api/mobile/create_session
+    경로: POST /api/mobile/create
     요청: {"name": "세션 이름"} (Optional)
     """
     invite_code = generate_invite_code()
@@ -93,7 +93,7 @@ async def create_session(request: SessionActionRequest):  # ✅ schemas.py 모�
         raise HTTPException(status_code=500, detail=f"세션 생성 실패: {str(e)}")
 
 
-@router.post("/join_session")
+@router.post("/join")
 async def join_session(request: SessionJoinRequest):
     """
     세션 참가

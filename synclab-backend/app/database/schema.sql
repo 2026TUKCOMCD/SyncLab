@@ -45,18 +45,21 @@ CREATE TABLE user_session (
 -- ==============================================================
 -- 4. video 테이블: 업로드된 영상 파일 및 동기화 메타데이터를 관리
 -- ==============================================================
+-- 4. video 테이블: 코드의 변수명과 1:1 매칭되도록 수정
 CREATE TABLE video (
-    video_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '영상 고유 번호 (정수 PK)', --
-    session_session_id INT NOT NULL COMMENT '영상이 소속된 세션 번호', --
-    s3_url VARCHAR(300) UNIQUE NOT NULL COMMENT '원본 영상의 S3 저장 주소 (CompleteUploadRequest.videoName 기반)', --
-    video_name VARCHAR(255) NOT NULL COMMENT '사용자가 설정한 영상 이름 (VideoMetadata.videoName)', --
-    upload_status VARCHAR(10) NOT NULL DEFAULT 'PENDING' COMMENT '업로드 상태 (PENDING, PROCESSING, COMPLETED)', --
-    absoulte_start_time BIGINT NOT NULL COMMENT '촬영 시작 절대 시간 (ms: VideoMetadata.absoluteStartTime)', --
-    absoulte_end_time BIGINT NOT NULL COMMENT '촬영 종료 절대 시간 (ms: VideoMetadata.absoluteEndTime)', --
-    duration DOUBLE NOT NULL COMMENT '영상 길이 (초: VideoMetadata.duration)', --
-    CONSTRAINT fk_video_session FOREIGN KEY (session_session_id) REFERENCES session(session_id) ON DELETE CASCADE --
+    video_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '영상 고유 번호',
+    sessionId INT NOT NULL COMMENT '영상이 소속된 세션 번호 (FK)', 
+    s3_url VARCHAR(300) UNIQUE NOT NULL COMMENT '전체 경로 (fullPath)',
+    video_name VARCHAR(255) NOT NULL COMMENT '파일명 (fileName)',
+    upload_status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '업로드 상태',
+    absoluteStartTime BIGINT NOT NULL COMMENT '촬영 시작 절대 시간 (ms)', 
+    absoluteEndTime BIGINT NOT NULL COMMENT '촬영 종료 절대 시간 (ms)', 
+    duration DOUBLE NOT NULL COMMENT '영상 길이 (초)',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    
+    -- 외래키 설정 (부모 테이블인 session의 session_id를 참조)
+    CONSTRAINT fk_video_session FOREIGN KEY (sessionId) REFERENCES session(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='업로드 영상 및 동기화 메타데이터';
-
 -- ==============================================================
 -- 테스트 데이터 삽입
 -- ==============================================================

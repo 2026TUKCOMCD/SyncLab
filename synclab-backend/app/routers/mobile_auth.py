@@ -8,7 +8,7 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/mobile", tags=["Mobile Authentication"])
+router = APIRouter(prefix="/api/mobile/auth", tags=["Mobile Authentication"])
 
 # ============================================
 # 데이터 모델
