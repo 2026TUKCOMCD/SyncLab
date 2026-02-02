@@ -2,21 +2,21 @@
 USE synclab;
 
 -- ==============================================================
--- 테이블 삭제 (순서 준수: 자식 테이블부터 삭제해야 외래키 오류가 발생하지 않음)
+-- 테이블 삭제 (순서 준수: 자식 테이블부터 삭제)
 -- ==============================================================
-DROP TABLE IF EXISTS video;            -- 영상 정보 테이블 삭제
-DROP TABLE IF EXISTS user_session;      -- 유저-세션 관계 테이블 삭제
-DROP TABLE IF EXISTS session;           -- 세션 정보 테이블 삭제
-DROP TABLE IF EXISTS user;              -- 유저 정보 테이블 삭제
+DROP TABLE IF EXISTS video;
+DROP TABLE IF EXISTS user_session;
+DROP TABLE IF EXISTS session;
+DROP TABLE IF EXISTS user;
 
 -- ==============================================================
 -- 1. user 테이블: 사용자 계정 정보를 관리
 -- ==============================================================
 CREATE TABLE user (
-    user_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '내부 관리용 유저 고유 번호 (정수 PK)', --
-    id VARCHAR(16) UNIQUE NOT NULL COMMENT '앱 로그인용 아이디 (String: LoginRequest.userId)', --
-    password VARCHAR(16) NOT NULL COMMENT '비밀번호 (String: LoginRequest.userPw)', --
-    user_name VARCHAR(100) NOT NULL COMMENT '사용자 이름 (LoginResponse.userName)', --
+    user_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '내부 관리용 유저 고유 번호 (정수 PK)',
+    id VARCHAR(16) UNIQUE NOT NULL COMMENT '앱 로그인용 아이디 (String: LoginRequest.userId)',
+    password VARCHAR(16) NOT NULL COMMENT '비밀번호 (String: LoginRequest.userPw)',
+    user_name VARCHAR(100) NOT NULL COMMENT '사용자 이름 (LoginResponse.userName)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '계정 생성 일시'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='사용자 계정 정보';
 
@@ -24,9 +24,9 @@ CREATE TABLE user (
 -- 2. session 테이블: 촬영 세션(방) 정보를 관리
 -- ==============================================================
 CREATE TABLE session (
-    session_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '세션 고유 번호 (정수 PK: 1부터 자동 증가)', --
-    session_name VARCHAR(200) NULL COMMENT '세션 이름 (SessionActionRequest.name)', --
-    invite_code VARCHAR(8) UNIQUE NOT NULL COMMENT '8자리 랜덤 초대 코드 (앱 표시용: connectCode)', --
+    session_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '세션 고유 번호 (정수 PK: 1부터 자동 증가)',
+    session_name VARCHAR(200) NULL COMMENT '세션 이름 (SessionActionRequest.name)',
+    invite_code VARCHAR(8) UNIQUE NOT NULL COMMENT '8자리 랜덤 초대 코드 (앱 표시용: connectCode)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '세션 생성 일시'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='촬영 세션(방) 정보';
 
@@ -34,33 +34,34 @@ CREATE TABLE session (
 -- 3. user_session 테이블: 유저가 어떤 세션에 참가 중인지 관리 (N:M 관계)
 -- ==============================================================
 CREATE TABLE user_session (
-    session_session_id INT NOT NULL COMMENT '참조하는 세션의 고유 번호', --
-    user_user_id INT NOT NULL COMMENT '참조하는 유저의 고유 번호', --
+    session_session_id INT NOT NULL COMMENT '참조하는 세션의 고유 번호',
+    user_user_id INT NOT NULL COMMENT '참조하는 유저의 고유 번호',
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '세션 참가 일시',
-    PRIMARY KEY (session_session_id, user_user_id), -- 복합키 설정
-    CONSTRAINT fk_session_id FOREIGN KEY (session_session_id) REFERENCES session(session_id) ON DELETE CASCADE, --
-    CONSTRAINT fk_user_id FOREIGN KEY (user_user_id) REFERENCES user(user_id) ON DELETE CASCADE --
+    PRIMARY KEY (session_session_id, user_user_id),
+    CONSTRAINT fk_session_id FOREIGN KEY (session_session_id) REFERENCES session(session_id) ON DELETE CASCADE,
+    CONSTRAINT fk_user_id FOREIGN KEY (user_user_id) REFERENCES user(user_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='유저-세션 참가 정보';
 
 -- ==============================================================
 -- 4. video 테이블: 업로드된 영상 파일 및 동기화 메타데이터를 관리
+-- [수정사항] 오타 수정(absoulte -> absolute) 및 앱 필드 매핑 명확화
 -- ==============================================================
 CREATE TABLE video (
-    video_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '영상 고유 번호 (정수 PK)', --
-    session_session_id INT NOT NULL COMMENT '영상이 소속된 세션 번호', --
-    s3_url VARCHAR(300) UNIQUE NOT NULL COMMENT '원본 영상의 S3 저장 주소 (CompleteUploadRequest.videoName 기반)', --
-    video_name VARCHAR(255) NOT NULL COMMENT '사용자가 설정한 영상 이름 (VideoMetadata.videoName)', --
-    upload_status VARCHAR(10) NOT NULL DEFAULT 'PENDING' COMMENT '업로드 상태 (PENDING, PROCESSING, COMPLETED)', --
-    absoulte_start_time BIGINT NOT NULL COMMENT '촬영 시작 절대 시간 (ms: VideoMetadata.absoluteStartTime)', --
-    absoulte_end_time BIGINT NOT NULL COMMENT '촬영 종료 절대 시간 (ms: VideoMetadata.absoluteEndTime)', --
-    duration DOUBLE NOT NULL COMMENT '영상 길이 (초: VideoMetadata.duration)', --
-    CONSTRAINT fk_video_session FOREIGN KEY (session_session_id) REFERENCES session(session_id) ON DELETE CASCADE --
+    video_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '영상 고유 번호 (정수 PK)',
+    session_session_id INT NOT NULL COMMENT '영상이 소속된 세션 번호 (CompleteUploadRequest.sessionId)',
+    s3_url VARCHAR(300) UNIQUE NOT NULL COMMENT '원본 영상의 S3 저장 주소 (sessionId/fileName 조합)',
+    video_name VARCHAR(255) NOT NULL COMMENT '사용자가 설정한 영상 이름 (CompleteUploadRequest.videoName)',
+    upload_status VARCHAR(10) NOT NULL DEFAULT 'PENDING' COMMENT '업로드 상태 (PENDING, PROCESSING, COMPLETED)',
+    absolute_start_time BIGINT NOT NULL COMMENT '촬영 시작 절대 시간 (ms: VideoMetadata.absoluteStartTime)', 
+    absolute_end_time BIGINT NOT NULL COMMENT '촬영 종료 절대 시간 (ms: VideoMetadata.absoluteEndTime)',
+    duration DOUBLE NOT NULL COMMENT '영상 길이 (초: VideoMetadata.duration)',
+    CONSTRAINT fk_video_session FOREIGN KEY (session_session_id) REFERENCES session(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='업로드 영상 및 동기화 메타데이터';
 
 -- ==============================================================
 -- 테스트 데이터 삽입
 -- ==============================================================
-INSERT INTO user (id, password, user_name) VALUES ('111', '111', '테스트 관리자'); -- 테스트용 계정 생성
+INSERT INTO user (id, password, user_name) VALUES ('111', '111', '테스트 관리자');
 
-SELECT '✅ SyncLab 주석 포함 스키마 생성 완료!' AS status;
+SELECT '✅ SyncLab 스키마(앱 구조 최적화) 생성 완료!' AS status;
 SHOW TABLES;
