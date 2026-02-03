@@ -9,7 +9,7 @@ from fastapi.security import OAuth2PasswordBearer # HTTP 헤더에서 토큰을 
 from app.routers.web_auth import ALGORITHM, SECRET_KEY # 로그인에서 사용했던 토큰과 알고리즘 HS256
 
 print(f"비디오 파일 키: {SECRET_KEY}") # 서버 로그 확인
-router = APIRouter(prefix="/web")
+router = APIRouter(prefix="/api/web")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "/api/web/login") # 토큰이 있는 URL 지정 -> 토큰 획득
 def get_current_session_id(token: str = Depends(oauth2_scheme)):

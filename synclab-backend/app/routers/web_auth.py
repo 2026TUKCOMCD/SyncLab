@@ -8,7 +8,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.schemas import Usercreate, Userlogin
 from app.database.connection import *
 
-router = APIRouter(prefix="/web") # /api/web 로 설정해야 함
+router = APIRouter(prefix="/api/web") # /api/web 로 설정해야 함
 
 # 토큰 생성 함수
 SECRET_KEY = "my_super_secret_key_synclab" 
