@@ -1,4 +1,4 @@
-
+# -*- coding: utf-8 -*-
 # app/models/schemas.py
 """
 모든 Pydantic 모델 정의 (API 명세 기반)
@@ -53,6 +53,7 @@ class LoginResponse(BaseModel):
 
 class SessionActionRequest(BaseModel):
     """세션 생성/참가 요청"""
+    user_pk: int
     name: Optional[str] = None
 
 
@@ -87,7 +88,6 @@ class HomeDataResponse(BaseModel):
 
 class VideoMetadata(BaseModel):
     """영상 메타데이터"""
-    videoName: str
     fileName: str
     absoluteStartTime: int
     absoluteEndTime: int
@@ -171,3 +171,19 @@ class ProxyRequest(BaseModel):
     video_id: int
     target_resolution: str = "1280x720"
     crf: int = Field(default=23, ge=0, le=51)
+
+   # 추가됨 ---------------------------------------------#
+class SessionInfo(BaseModel):
+    sessionId: str
+    sessionName: str
+    createdAt: str
+    participantCount: int
+    connectCode: Optional[str] = None
+    expiresAt: Optional[int] = None
+
+
+class SessionResponse(BaseModel):
+    status: str
+    session: SessionInfo
+    temp_code: Optional[str] = None    # 앱의 @SerializedName("temp_code") 대응
+    expires_in: Optional[int] = None

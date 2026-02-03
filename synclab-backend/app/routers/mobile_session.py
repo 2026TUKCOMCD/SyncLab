@@ -5,11 +5,13 @@
 """
 import random
 import string
+import time
 from fastapi import APIRouter, HTTPException
 from app.database.connection import get_db_connection
 from app.models.schemas import SessionActionRequest  # ✅ schemas.py 사용
 from typing import Optional
 from pydantic import BaseModel
+from datetime import datetime
 
 router = APIRouter(prefix="/api/mobile/session", tags=["Mobile-Session"])
 
@@ -34,25 +36,24 @@ def generate_invite_code() -> str:
 
 
 # ============================================
-# API 엔드포인트
+# API 
 # ============================================
 
-@router.post("/create")
-async def create_session(request: SessionActionRequest):  # ✅ schemas.py 모델 사용
+@router.post("/create") # 앱이 호출하는 경로로 맞춤
+async def create_session(request: SessionActionRequest):
     """
-    세션 생성
-    - 새로운 세션 생성
-    - 초대 코드(invite_code) 발급
-    - 생성자를 참가자로 자동 등록
-    
-    경로: POST /api/mobile/create
-    요청: {"name": "세션 이름"} (Optional)
+    세션 생성 API
+    - 만료 시간(expiresAt) 및 필수 필드(participantCount 등) 추가
     """
     invite_code = generate_invite_code()
     
-    # ✅ SessionActionRequest는 name만 있음 (user_pk 제거)
-    # user_pk는 나중에 JWT에서 추출하도록 변경 필요
-    default_user_pk = 1  # 임시 기본값
+    # 만료 시간 설정 (1시간 = 3600초)
+    expires_in_seconds = 3600
+    expires_at_timestamp = int(time.time()) + expires_in_seconds
+    current_time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+    # 앱에서 보낸 user_pk 추출
+    user_id_from_app = request.user_pk 
     
     try:
         with get_db_connection() as conn:
@@ -60,38 +61,47 @@ async def create_session(request: SessionActionRequest):  # ✅ schemas.py 모�
             
             # 1. session 테이블에 삽입
             sql_session = """
-                INSERT INTO session (session_name, invite_code)
-                VALUES (%s, %s)
+                INSERT INTO session (session_name, invite_code, expires_at)
+                VALUES (%s, %s, %s)
             """
-            cursor.execute(sql_session, (request.name or "새로운 세션", invite_code))
+            cursor.execute(sql_session, (request.name or "새로운 세션", invite_code, expires_at_timestamp))
             
-            # 2. 생성된 session_id 가져오기 (AUTO_INCREMENT)
+            # 2. 생성된 session_id 가져오기
             new_session_id = cursor.lastrowid
             
-            # 3. user_session에 생성자 등록
+            # 3. user_session에 생성자 등록 
+            # (주의: user_id_from_app이 DB의 user 테이블에 존재해야 함)
             sql_user_session = """
                 INSERT INTO user_session (session_session_id, user_user_id)
                 VALUES (%s, %s)
             """
-            cursor.execute(sql_user_session, (new_session_id, default_user_pk))
+            cursor.execute(sql_user_session, (new_session_id, user_id_from_app))
             
             conn.commit()
             cursor.close()
         
+        # ✅ 앱의 SessionResponse 및 SessionInfo 데이터 구조에 완벽히 맞춤
         return {
             "status": "success",
             "session": {
                 "sessionId": str(new_session_id),
                 "sessionName": request.name or "새로운 세션",
-                "connectCode": invite_code
+                "createdAt": current_time_str,      # 앱 모델 필수 필드
+                "participantCount": 1,              # 앱 모델 필수 필드
+                "connectCode": invite_code,         # 앱 모델 필드
+                "expiresAt": expires_at_timestamp   # 앱 모델 필수 필드 (Long)
             },
-            "temp_code": invite_code,
-            "expires_in": 3600
+            "temp_code": invite_code,               # 앱 @SerializedName("temp_code")
+            "expires_in": expires_in_seconds        # 앱 @SerializedName("expires_in")
         }
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"세션 생성 실패: {str(e)}")
-
+        # 서버 콘솔에서 구체적인 에러 확인용
+        print(f"🔥 세션 생성 에러 상세: {str(e)}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"세션 생성 실패 (DB 또는 데이터 불일치): {str(e)}"
+        )
 
 @router.post("/join")
 async def join_session(request: SessionJoinRequest):

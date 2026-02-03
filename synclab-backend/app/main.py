@@ -16,7 +16,10 @@ app = FastAPI(
     description="다각도 영상 촬영 및 편집 시스템",
     version="1.0.0"
 )
-
+origins = [
+    "http://localhost:8080",
+    "http://localhost:8000"
+]
 # CORS 설정
 app.add_middleware(
     CORSMiddleware,
@@ -26,8 +29,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
 # 라우터 등록
-# app.include_router(web_video.router)
+app.include_router(web_video.router, prefix="/api")
 app.include_router(web_auth.router)
 app.include_router(session.router)
 app.include_router(mobile_session.router)

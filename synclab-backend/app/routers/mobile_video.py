@@ -217,8 +217,9 @@ async def complete_upload(request: CompleteUploadRequest, background_tasks: Back
     경로: POST /api/mobile/upload/complete
     """
     try:
-        session_id = request.metadata.sessionId
+        session_id = request.sessionId
         file_name = request.metadata.fileName
+        video_name = request.videoName
         full_s3_key = f"{session_id}/{file_name}"
         
         # S3 멀티파트 병합
