@@ -3,8 +3,8 @@ import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import axios from 'axios'
 import React, { useState, useRef, useEffect } from 'react';
-// useEffect()는 화면이 구성된 뒤에 실행되어 재랜더링 하는 방식이지만 
-// useState는 랜더링 이전에 수행되어 불필요한 랜더링이 발생하지 않음.
+// useEffect()는 화면이 구성된 뒤에 실행되어 재랜더링 하는 방식이지만 useState는 랜더링 이전에 수행되어 불필요한 랜더링이 발생하지 않음.
+// useRef()는 랜더링 되어도 변하지 않는 참조 변수 또는 객체
 
 function EditPage() {
   const navigate = useNavigate();
@@ -26,8 +26,9 @@ function EditPage() {
   const [loading, setLoading] = useState(true);
   const colors = ['#F87171', '#60A5FA', '#34D399', '#FBBF24'];
 
+  // 편집화면 이동 시 로그인하 사용자의 user_session_id를 조회하여 해당 세션의 동영상 목록을 출력하는 함수
   useEffect(() => {
-    const fetchVideos = async () => {
+    const fetchVideos = async () => { // fetchVideos 라는 비동기 함수를 작성하고 useEffect() 끝에서 함수 호출하는 방식
       const token = localStorage.getItem('accessToken');
       console.log("현재 토큰:", token);
       if (!token) {
@@ -36,7 +37,7 @@ function EditPage() {
       }
       // GET 요청 수행
       try {
-        const response = await axios.get('http://localhost:8000/api/web/list', {
+        const response = await axios.get('http://localhost:8000/api/web/list', { // response는 web_video.py에서 @router.get("/list")의 리턴값인 배열
           headers: {
             Authorization: `Bearer ${token}` // Header에 토큰 값 실어서 보내기
           }
@@ -47,7 +48,7 @@ function EditPage() {
       catch (error) {
         console.error('네트워크 에러:', error);
 
-        if(error.response && error.response.status == 401){
+        if (error.response && error.response.status == 401) {
           alert("인증이 만료되었습니다. 다시 로그인해주세요.");
         }
       }
@@ -56,58 +57,70 @@ function EditPage() {
       }
     };
     fetchVideos();
-  }, []);
+  }, []); // 컴포넌트가 처음 등장한 이후 한 번만 실행되도록 (Mount) -> 목록 보여주는거니까 한 번만 해도 무방함
 
+  // 타임라인 In, Out 값 드래그 기능
   useEffect(() => {
-    if (isDraggingIn || isDraggingOut) {
-      window.addEventListener('mousemove', handleMarkerDrag);
-      window.addEventListener('mouseup', handleMarkerMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleMarkerDrag);
+    if (isDraggingIn || isDraggingOut) { // In 또는 Out이 드래그 중일 때
+      window.addEventListener('mousemove', handleMarkerDrag);   //"mousemove" 이벤트에 대해 handleMarkerDrag 리스너 등록
+      window.addEventListener('mouseup', handleMarkerMouseUp); // "mouseup" 이벤트에 대해 handleMarkerMouseUp 리스너 등록
+      
+      return () => { // 등록했던 이벤트 리스너 해제 -> 마우스를 이동시켜도 마커가 움직이지 않도록 제어
+        window.removeEventListener('mousemove', handleMarkerDrag); 
         window.removeEventListener('mouseup', handleMarkerMouseUp);
       };
     }
-  }, [isDraggingIn, isDraggingOut]);
+  }, [isDraggingIn, isDraggingOut]); // 드래그 할 때 마다 렌더링?
 
+  // 현재 재생 중인 동영상의 시간을 보여주기 위한 함수로 타임라인의 Bar가 이동하거나 숫자 표시
   useEffect(() => {
     if (isPlaying && selectedSourceCam !== null) {
       const updateTime = () => {
-        const video = videoRefs.current[selectedSourceCam];
+        const video = videoRefs.current[selectedSourceCam]; // 프로그램 모니터에 선택된 비디오 가져오기
         if (video && !video.paused && !video.ended) {
-          setCurrentTime(video.currentTime);
+          setCurrentTime(video.currentTime); // 비디오의 재생 시간을 현재 시간으로 저장
           animationRef.current = requestAnimationFrame(updateTime);
+          // rAF(requestAnimationFrame) 함수는 브라우저의 주사율을 60fps로 맞춰 렌더링하는 것 
+          // 동영상이 60 프레임으로 재생된다면 1초에 60번 리렌더링하는 것과 같지만 변경부분만 렌더링되므로 부하가 많지 않음.
         }
       };
       animationRef.current = requestAnimationFrame(updateTime);
     }
     return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current);
+      if (animationRef.current) cancelAnimationFrame(animationRef.current); // 컴포넌트가 언마운트 되거나 재생이 중지되면 루프 중지 -> 메모리 누수 방지
     };
-  }, [isPlaying, selectedSourceCam]);
+  }, [isPlaying, selectedSourceCam]); // 이 useEffect의 실행 시점은 Mount, Update로 isPlaying이나 selectedSourceCam 값이 변경될 때 렌더링, 하지만 내부 코드인 requestAnimationFrame 함수로 인해 초당 60번의 랜더링이 이루어짐
 
+  // play, pause 버튼 클릭 시 발생하는 이벤트 함수이고 모든 동영상의 재생, 정지를 제어
   const togglePlay = () => {
     if (selectedSourceCam === null) return;
-    const allVideos = Object.values(videoRefs.current).filter(v => v);
-    const programVideo = programVideoRef.current;
+    const allVideos = Object.values(videoRefs.current).filter(v => v); // Object(객체들 중)에서 videoRefs.current에 있는 비디오를 배열로 가져오고 필터링(실제 비디오만)
+    const programVideo = programVideoRef.current; // 선택되어 프로그램 모니터 부분에 나타난 비디오
+
+    // 일시 정지 상태일 때 버튼 클릭 시 동시 재생
     if (!isPlaying) {
-      allVideos.forEach(v => v.play().catch(() => { }));
+      allVideos.forEach(v => v.play().catch(() => { })); // .catch()를 통해 자동 재생 정책 무시
       if (programVideo) programVideo.play().catch(() => { });
       setIsPlaying(true);
-    } else {
+    }
+    // 재생 중일 때 버튼 클릭시 일시 정지
+    else {
       allVideos.forEach(v => v.pause());
       if (programVideo) programVideo.pause();
       setIsPlaying(false);
     }
   };
 
+  // second 매개변수로 시간, 분, 초로 계산하여 문자열 출력
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    const f = Math.floor((seconds % 1) * 30);
+    const f = Math.floor((seconds % 1) * 30); // 30프레임임?
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${f.toString().padStart(2, '0')}`;
   };
 
+  // 멀티뷰 소스에서 비디오 선택 시 프로그램 모니터의 비디오로 설정 및 초기화 함수
   const handleSourceCamClick = (camId) => {
     if (selectedSourceCam === camId) return;
     setSelectedSourceCam(camId);
@@ -121,6 +134,7 @@ function EditPage() {
     if (programVideoRef.current) programVideoRef.current.currentTime = 0;
   };
 
+  // 비디오 리소스에서 멀티뷰 소스로 비디오 선택 시 multiCamers 배열로 비디오를 추가하는 함수
   const addCameraToMultiview = (camera) => {
     const emptySlotIndex = multiviewCameras.findIndex(cam => cam === null);
     if (emptySlotIndex !== -1) {
@@ -132,6 +146,7 @@ function EditPage() {
     }
   };
 
+  // 멀티뷰 리소스에서 선택했던 비디오를 제외하는 함수
   const removeCameraFromMultiview = (slotIndex) => {
     const newMultiview = [...multiviewCameras];
     const removedCam = newMultiview[slotIndex];
@@ -144,67 +159,78 @@ function EditPage() {
     }
   };
 
+  // 멀티뷰 소스에서 비디오 클릭 시 handleSourceCamClick 함수 호출
   const handleMultiviewSlotClick = (slotIndex) => {
     const camera = multiviewCameras[slotIndex];
     if (camera) handleSourceCamClick(camera.id);
   };
 
+  // 타임라인 지점 클릭 시 원하는 시점으로 영상을 점프시키는 함수
   const handleTimelineClick = (e) => {
     if (selectedSourceCam === null) return;
-    if (isDraggingIn || isDraggingOut) return;
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const percent = x / rect.width;
-    const newTime = percent * duration;
+    if (isDraggingIn || isDraggingOut) return;            // 클릭이 아닌 드래그일 경우에 리턴하여 점프시키지 않도록 유도
+    const rect = e.currentTarget.getBoundingClientRect(); // 타임라인 막대의 실제 화면상 크기와 위치 값 저장
+    const x = e.clientX - rect.left;                      // 클릭 지점 X값 - 타임라인 막대의 왼쪽 여백 값 = 타임라인 내 클릭 지점 계산
+    const percent = x / rect.width;                       // 타임라인 내 클릭 지점을 타임라인의 너비로 나누어 비율 계산
+    const newTime = percent * duration;                   // 비율 * 영상 길이를 통해 실제 비디오의 시간 계산
     setCurrentTime(newTime);
-    Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; });
+    Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; }); // 모든 동영상을 클릭 시점으로 맞춤
     if (programVideoRef.current) programVideoRef.current.currentTime = newTime;
   };
 
+  // 편집 시작점과 편집 종료점을 드래그하여 이동시키는 함수, MouseDown -> MouseUp으로 드래그 구현
   const handleMarkerMouseDown = (type, e) => {
-    e.stopPropagation();
-    if (type === 'in') setIsDraggingIn(true);
+    e.stopPropagation(); // stopPropagation 함수를 통해 MouseDown만 동작하게 함 -> click과 같은 다른 이벤트가 동작하는 것을 방지
+    if (type === 'in') setIsDraggingIn(true); // In의 드래그 상태 업데이트(드래그 중인지)
     else setIsDraggingOut(true);
   };
 
+  // In/Out 마커 드래그 중 마커의 시간 계산 및 제어 함수
   const handleMarkerDrag = (e) => {
     if (!isDraggingIn && !isDraggingOut) return;
     if (!timelineRef.current) return;
-    const rect = timelineRef.current.getBoundingClientRect();
+
+    // 타임라인 내부의 시간으로 변환하는 수학 로직 -> handleTimeLineCLick의 로직과 유사함
+    const rect = timelineRef.current.getBoundingClientRect(); 
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const percent = x / rect.width;
     let newTime = Math.max(0, Math.min(percent * duration, duration));
 
     if (isDraggingIn) {
-      if (outPoint !== null && newTime >= outPoint) newTime = outPoint - 0.1;
+      if (outPoint !== null && newTime >= outPoint) newTime = outPoint - 0.1; // 새로운 시작점은 앞선 종료점보다 앞에 올 수 없도록 제어
       const conflictClip = savedClips.find(clip => newTime >= clip.inPoint && newTime < clip.outPoint);
-      if (conflictClip) newTime = conflictClip.outPoint;
+      if (conflictClip) newTime = conflictClip.outPoint; // 이미 생성되어 있는 클립과 겹칠 경우 클립의 종료점을 시작점으로 설정
       setInPoint(newTime);
-    } else if (isDraggingOut) {
-      if (inPoint !== null && newTime <= inPoint) newTime = inPoint + 0.1;
+    }
+    else if (isDraggingOut) {
+      if (inPoint !== null && newTime <= inPoint) newTime = inPoint + 0.1; // 새로운 종료점은 시작점보다 앞에 올 수 없도록 제어
       const conflictClip = savedClips.find(clip => newTime > clip.inPoint && newTime <= clip.outPoint);
-      if (conflictClip) newTime = conflictClip.inPoint;
+      if (conflictClip) newTime = conflictClip.inPoint; // 이미 생성되어 있는 클립과 겹칠 경우 클립의 종료지점을 앞선 클립의 시작지점으로 이동
       setOutPoint(newTime);
     }
   };
 
+  // 드래그가 종료됐을 때(마우스를 뗐을 때?) isDraggingIn 또는 isDraggingOut을 false로 업데이트
   const handleMarkerMouseUp = () => {
     setIsDraggingIn(false);
     setIsDraggingOut(false);
   };
 
+  // In 버튼 클릭 시 수행되는 함수로 타임라인의 현재 시점에 In 마커 생성
   const setIn = () => {
     if (selectedSourceCam === null) return;
     setInPoint(currentTime);
     if (outPoint !== null && currentTime > outPoint) setOutPoint(null);
   };
 
+  // Out 버튼 클릭 시 수행되는 함수로 타임라인의 현재 시점에 Out 마커 생성
   const setOut = () => {
     if (selectedSourceCam === null) return;
     setOutPoint(currentTime);
     if (inPoint !== null && currentTime < inPoint) setInPoint(null);
   };
 
+  // 클립 생성 함수
   const addClip = () => {
     if (selectedSourceCam === null || inPoint === null || outPoint === null) {
       alert('In점과 Out점을 모두 설정해주세요.');
@@ -224,7 +250,7 @@ function EditPage() {
       alert('선택한 구간이 이미 추가된 클립과 겹칩니다. 다른 구간을 선택해주세요.');
       return;
     }
-    const newClip = {
+    const newClip = { // 클립 정보 값 -> 편집 정보로 넘길 때 사용할 예정
       id: Date.now(),
       cam: selectedSourceCam,
       inPoint,
@@ -232,12 +258,14 @@ function EditPage() {
       duration: outPoint - inPoint,
     };
     const updatedClips = [...savedClips, newClip].sort((a, b) => a.inPoint - b.inPoint);
+    console.table(updatedClips);
     setSavedClips(updatedClips);
-    setInPoint(outPoint);
+    setInPoint(outPoint); // 클립 생성 후 Out 지점을 새로운 In 지점으로 지정
     setOutPoint(null);
-    setCurrentTime(outPoint);
+    setCurrentTime(outPoint); // 현재 시점 또한 Out 지점으로 설정
   };
 
+  // 생성된 클립 제거
   const removeClip = (clipId) => {
     setSavedClips(savedClips.filter(clip => clip.id !== clipId));
   };
@@ -376,7 +404,7 @@ function EditPage() {
                     {cam ? (
                       <>
                         <video
-                          ref={el => { if (el) videoRefs.current[cam.id] = el; }}
+                          ref={el => { if (el) videoRefs.current[cam.id] = el; }} // videoRefs에 객체 추가
                           src={cam.videoUrl}
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           muted
