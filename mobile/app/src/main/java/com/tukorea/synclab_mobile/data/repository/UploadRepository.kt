@@ -24,26 +24,31 @@ class UploadRepository {
         return withContext(Dispatchers.IO) {
             try {
                 if (!videoFile.exists()) {
-                    return@withContext Result.failure(Exception("파일 찾을 수 없음: ${videoFile.absolutePath}"))
+                    return@withContext Result.failure(Exception("파일을 찾을 수 없습니다: ${videoFile.absolutePath}"))
                 }
 
+                // [준비] 세션 ID 및 파트 개수 계산
+                val sessionId = metadata.sessionId ?: return@withContext Result.failure(Exception("세션 ID가 누락되었습니다."))
                 val chunkCount = Math.ceil(videoFile.length().toDouble() / CHUNK_SIZE).toInt()
-                Log.d("UploadRepository", "🚀 시작: ${videoFile.name}, 세션: ${metadata.sessionId}")
 
-                // [1단계] 업로드 초기화 (S3 UploadId 발급)
+                Log.d("UploadRepository", "🚀 업로드 시작: ${videoFile.name} (세션: $sessionId, 파트: $chunkCount)")
+
+                // [1단계] 업로드 초기화 (S3 UploadId 및 Presigned URLs 발급)
+                // 인터페이스의 @Query 설정에 따라 URL 파라미터로 전달됩니다.
                 val initResponse = api.initMultipartUpload(
+                    sessionId = sessionId,
                     filename = videoFile.name,
-                    partCount = chunkCount,
-                    sessionId = metadata.sessionId
+                    partCount = chunkCount
                 )
 
                 val uploadId = initResponse.uploadId
                 val presignedUrls = initResponse.presignedUrls
-                val s3Key = initResponse.s3Key
+                // 서버가 준 s3Key가 없으면 "세션ID/파일명" 구조로 직접 생성
+                val s3Key = initResponse.s3Key ?: "$sessionId/${videoFile.name}"
 
                 val etags = mutableListOf<String>()
 
-                // [2단계] S3로 조각 업로드
+                // [2단계] S3로 조각(Part) 업로드
                 for (i in 0 until chunkCount) {
                     val offset = i * CHUNK_SIZE
                     val currentPartSize = Math.min(CHUNK_SIZE, videoFile.length() - offset)
@@ -60,44 +65,48 @@ class UploadRepository {
                             partSize = currentPartSize
                         )
                         if (successEtag != null) break
+
                         retryCount++
+                        Log.w("UploadRepository", "⚠️ ${i + 1}번 조각 재시도 ($retryCount/$MAX_RETRIES)")
                         delay(2000)
                     }
 
-                    if (successEtag == null) return@withContext Result.failure(Exception("${i+1}번 조각 실패"))
+                    if (successEtag == null) {
+                        return@withContext Result.failure(Exception("${i + 1}번 조각 업로드 실패 (최대 재시도 초과)"))
+                    }
+
                     etags.add(successEtag)
 
+                    // 메인 스레드에서 프로그레스 업데이트
                     withContext(Dispatchers.Main) {
                         onProgress((i + 1).toFloat() / chunkCount)
                     }
                 }
 
-                // [3단계] 서버 완료 보고 (sessionId 누락 방지)
-                val finalSessionId = metadata.sessionId ?: "default_session"
-
+                // [3단계] 서버 완료 보고 및 DB 등록
                 val completeRequest = CompleteUploadRequest(
-                    sessionId = finalSessionId, // ⭐️ 이 필드가 추가되어야 합니다!
+                    sessionId = sessionId,
                     uploadId = uploadId,
-                    videoName = s3Key ?: videoFile.name,
+                    videoName = s3Key, // S3 경로 (session_id/filename.mp4)
                     etags = etags,
-                    metadata = metadata.copy(sessionId = finalSessionId)
+                    metadata = metadata.copy(sessionId = sessionId)
                 )
 
-                Log.d("UploadRepository", "🔗 완료 요청 전송: Session=$finalSessionId")
+                Log.d("UploadRepository", "🔗 서버에 업로드 완료 보고 전송 중...")
 
-                // 타임아웃 발생 지점: 네트워크 상태가 안 좋으면 여기서 터집니다.
                 val response = api.completeAndRegister(completeRequest)
 
                 if (response.isSuccessful) {
-                    Log.d("UploadRepository", "✅ 업로드 성공")
+                    Log.d("UploadRepository", "✅ 모든 과정 성공적으로 완료")
                     Result.success(Unit)
                 } else {
-                    val errorMsg = response.errorBody()?.string() ?: "알 수 없는 에러"
-                    Result.failure(Exception("서버 오류: $errorMsg"))
+                    val errorBody = response.errorBody()?.string()
+                    Log.e("UploadRepository", "❌ 완료 보고 실패: $errorBody")
+                    Result.failure(Exception("서버 등록 실패: $errorBody"))
                 }
 
             } catch (e: Exception) {
-                Log.e("UploadRepository", "❌ 에러 발생: ${e.message}")
+                Log.e("UploadRepository", "❌ 예외 발생: ${e.message}")
                 Result.failure(e)
             }
         }

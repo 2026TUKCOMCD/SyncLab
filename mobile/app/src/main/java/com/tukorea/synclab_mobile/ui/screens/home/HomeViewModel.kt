@@ -20,25 +20,20 @@ class HomeViewModel : ViewModel() {
     var currentInviteCode by mutableStateOf("")
     var expiresIn by mutableIntStateOf(0)
 
-    var userPk by mutableIntStateOf(0)
-        private set
     init {
         loadHomeData()
     }
 
-    fun setUserInfo(pk: Int) {
-        userPk = pk
-    }
     fun loadHomeData() {
         viewModelScope.launch {
             try {
-                // NetworkClient를 직접 호출할 때 발생할 수 있는 Exception 방어
                 val response = com.tukorea.synclab_mobile.api.NetworkClient.homeService.getHomeData()
                 currentSession = response.currentSession
                 sessionHistory = response.history ?: emptyList()
 
+                // videos 맵에서 현재 세션 ID에 해당하는 리스트 추출
                 currentSession?.sessionId?.let { sid ->
-                    recentVideos = response.videos[sid] ?: emptyList()
+                    recentVideos = response.videos?.get(sid) ?: emptyList()
                 }
             } catch (e: Exception) {
                 Log.e("HomeViewModel", "홈 데이터 로드 실패: ${e.message}")
@@ -46,54 +41,56 @@ class HomeViewModel : ViewModel() {
         }
     }
 
-    // [중요 수정] 세션 생성 시 에러 핸들링 강화
-    fun createSession(userPk: Int) {
+    /**
+     * [수정] userPk를 제거하고 세션 이름(name)을 받도록 변경
+     */
+    fun createSession(sessionName: String = "새로운 세션") {
         viewModelScope.launch {
-            try {
-                repository.createNewSession("", userPk).onSuccess { response ->
-                    if (response.status == "success") {
-                        currentSession = response.session
-                        currentInviteCode = response.tempCode ?: ""
-                        expiresIn = response.expiresIn ?: 300
-                        recentVideos = emptyList()
-                        Log.d("HomeViewModel", "세션 생성 성공: $currentInviteCode")
-                    }
-                }.onFailure { e ->
-                    Log.e("HomeViewModel", "세션 생성 실패 (API 에러): ${e.message}")
+            repository.createNewSession(sessionName).onSuccess { response ->
+                if (response.status == "success") {
+                    currentSession = response.session
+                    currentInviteCode = response.tempCode ?: ""
+                    expiresIn = response.expiresIn ?: 300
+                    recentVideos = emptyList()
+
+                    // 히스토리 갱신을 위해 데이터 다시 로드
+                    loadHomeData()
+                    Log.d("HomeViewModel", "세션 생성 성공: $currentInviteCode")
                 }
-            } catch (e: Exception) {
-                Log.e("HomeViewModel", "세션 생성 도중 예외 발생: ${e.message}")
+            }.onFailure { e ->
+                Log.e("HomeViewModel", "세션 생성 실패: ${e.message}")
             }
         }
     }
 
-    // [중요 수정] joinSession에서 "참여 중인 세션 없음" 방지 로직
+    /**
+     * [수정] 6자리 코드는 verifyConnectCode로, 그 외엔 invite_code로 참가
+     */
     fun joinSession(input: String) {
         viewModelScope.launch {
-            try {
-                if (input.length == 6 && input.all { it.isDigit() }) {
-                    // 6자리 코드로 sessionId 조회
-                    repository.verifyConnectCode(input).onSuccess { verifyResponse ->
-                        joinSessionById(verifyResponse.sessionId)
-                    }.onFailure { e ->
-                        Log.e("HomeViewModel", "코드 검증 실패 (만료 혹은 잘못된 코드): ${e.message}")
-                    }
-                } else {
-                    joinSessionById(input)
+            if (input.length == 6 && input.all { it.isDigit() }) {
+                // 1. 6자리 숫자 코드로 세션 ID 조회
+                repository.verifyConnectCode(input).onSuccess { verifyResponse ->
+                    // 2. 조회된 ID(invite_code)로 실제 참가
+                    joinSessionByInviteCode(verifyResponse.sessionId)
+                }.onFailure { e ->
+                    Log.e("HomeViewModel", "코드 검증 실패: ${e.message}")
                 }
-            } catch (e: Exception) {
-                Log.e("HomeViewModel", "세션 참가 도중 예외: ${e.message}")
+            } else {
+                // 바로 invite_code로 참가 시도
+                joinSessionByInviteCode(input)
             }
         }
     }
 
-    private fun joinSessionById(sessionId: String) {
+    private fun joinSessionByInviteCode(inviteCode: String) {
         viewModelScope.launch {
-            repository.joinSession(sessionId).onSuccess { response ->
+            repository.joinSession(inviteCode).onSuccess { response ->
                 currentSession = response.session
                 refreshVideoStatus()
+                loadHomeData() // 히스토리 업데이트
             }.onFailure { e ->
-                Log.e("HomeViewModel", "ID 참가 실패: ${e.message}")
+                Log.e("HomeViewModel", "세션 참가 실패: ${e.message}")
             }
         }
     }
@@ -102,9 +99,15 @@ class HomeViewModel : ViewModel() {
         val sid = currentSession?.sessionId ?: return
         viewModelScope.launch {
             repository.fetchSessionVideos(sid).onSuccess { response ->
+                // Repository에서 반환 타입을 VideoListResponse 등으로 맞췄다면 아래와 같이 사용
+                // recentVideos = response.videos ?: emptyList()
+
+                // 만약 Map<String, Any> 형태라면 캐스팅 필요
                 val videoList = response["videos"] as? List<*>
                 recentVideos = videoList?.filterIsInstance<VideoStatus>() ?: emptyList()
-            }.onFailure { e -> Log.e("HomeViewModel", "영상 갱신 실패: ${e.message}") }
+            }.onFailure { e ->
+                Log.e("HomeViewModel", "영상 갱신 실패: ${e.message}")
+            }
         }
     }
 

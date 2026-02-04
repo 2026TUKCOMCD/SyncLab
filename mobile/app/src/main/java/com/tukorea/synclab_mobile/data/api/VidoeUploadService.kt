@@ -14,9 +14,9 @@ interface VideoUploadService {
      */
     @GET("api/mobile/video/upload/init")
     suspend fun initMultipartUpload(
-        @Query("filename") filename: String,
-        @Query("partCount") partCount: Int,
-        @Query("sessionId") sessionId: String
+        @Query("session_id") sessionId: String, // 폴더명이 될 ID
+        @Query("filename") filename: String,   // 저장될 파일 이름
+        @Query("part_count") partCount: Int
     ): InitUploadResponse
 
     /**

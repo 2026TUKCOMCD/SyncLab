@@ -42,6 +42,7 @@ fun HomeScreen(
     val context = LocalContext.current
     var backPressedTime by remember { mutableLongStateOf(0L) }
 
+    // 뒤로가기 종료 로직
     BackHandler {
         val currentTime = System.currentTimeMillis()
         if (currentTime - backPressedTime < 2000) {
@@ -52,27 +53,33 @@ fun HomeScreen(
         }
     }
 
+    // 영상 처리 상태 자동 갱신 (Polling)
     LaunchedEffect(viewModel.recentVideos) {
-        if (viewModel.recentVideos.any { it.status == "PROCESSING" }) {
+        if (viewModel.recentVideos.any { it.status == "PROCESSING" || it.status == "PENDING" }) {
             while (true) {
                 delay(5000)
-                try { viewModel.refreshVideoStatus() } catch (e: Exception) { Log.e("HomeScreen", "${e.message}") }
+                try {
+                    viewModel.refreshVideoStatus()
+                } catch (e: Exception) {
+                    Log.e("HomeScreen", "Polling Error: ${e.message}")
+                }
+                // 모든 영상이 완료되면 중단
                 if (viewModel.recentVideos.all { it.status == "COMPLETED" }) break
             }
         }
     }
 
+    // 1. 세션 생성 다이얼로그
     if (showCreateDialog) {
         AlertDialog(
             onDismissRequest = { showCreateDialog = false },
-            title = { Text("세션 생성") },
-            text = { Text("새로운 세션을 생성하시겠습니까?\n생성 시 게스트를 위한 10분 임시 코드가 발급됩니다.") },
+            title = { Text("새로운 세션 생성") },
+            text = { Text("새로운 세션을 생성하시겠습니까?\n생성 시 게스트를 위한 임시 코드가 함께 발급됩니다.") },
             confirmButton = {
                 Button(onClick = {
                     showCreateDialog = false
-                    viewModel.createSession(
-                        userPk = viewModel.userPk // 뷰모델에서 관리하는 유저 PK
-                    )
+                    // ✅ 수정: ViewModel의 변경된 인자(name)에 맞춰 호출 (userPk 제거됨)
+                    viewModel.createSession("모바일 세션 ${System.currentTimeMillis() % 1000}")
                 }) { Text("생성") }
             },
             dismissButton = {
@@ -81,17 +88,19 @@ fun HomeScreen(
         )
     }
 
+    // 2. 세션 참가 다이얼로그
     if (showJoinDialog) {
         AlertDialog(
             onDismissRequest = { showJoinDialog = false },
             title = { Text("세션 참가") },
             text = {
                 Column {
-                    Text("공유받은 8자리 코드를 입력하세요.")
+                    Text("공유받은 8자리 세션 ID 또는 6자리 초대 코드를 입력하세요.")
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = joinCodeInput,
                         onValueChange = {
+                            // 세션 ID(8자리) 또는 초대코드(6자리) 대응을 위해 8자리로 제한
                             if (it.length <= 8) joinCodeInput = it.uppercase().filter { it.isLetterOrDigit() }
                         },
                         label = { Text("참가 코드") },
@@ -103,7 +112,8 @@ fun HomeScreen(
             },
             confirmButton = {
                 Button(
-                    enabled = joinCodeInput.length == 8,
+                    // 최소 6자리(초대코드) 이상일 때 활성화
+                    enabled = joinCodeInput.length >= 6,
                     onClick = {
                         viewModel.joinSession(joinCodeInput)
                         joinCodeInput = ""
@@ -122,7 +132,9 @@ fun HomeScreen(
             TopAppBar(
                 title = { Text("SyncLab", fontSize = 20.sp, fontWeight = FontWeight.Bold) },
                 actions = {
-                    IconButton(onClick = { }) { Icon(Icons.Default.Notifications, null, tint = Color(0xFF475569)) }
+                    IconButton(onClick = { viewModel.loadHomeData() }) {
+                        Icon(Icons.Default.Refresh, "새로고침", tint = Color(0xFF475569))
+                    }
                     Box(modifier = Modifier.padding(end = 16.dp).size(32.dp).clip(CircleShape).background(Color(0xFFE2E8F0)))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.White)
@@ -137,7 +149,7 @@ fun HomeScreen(
                 .padding(horizontal = 24.dp),
             verticalArrangement = Arrangement.spacedBy(24.dp)
         ) {
-
+            // 게스트 표시부
             if (viewModel.isGuest) {
                 item {
                     Column(
@@ -146,34 +158,24 @@ fun HomeScreen(
                     ) {
                         Surface(color = Color(0xFFF1F5F9), shape = RoundedCornerShape(12.dp)) {
                             Text(
-                                text = "게스트로 로그인 하였습니다",
+                                text = "게스트 모드로 접속 중입니다",
                                 color = Color(0xFF64748B),
-                                fontSize = 14.sp,
+                                fontSize = 13.sp,
                                 fontWeight = FontWeight.Medium,
                                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
                             )
                         }
                     }
                 }
-                item {
-                    CurrentSessionCard(viewModel = viewModel)
-                }
-                item {
-                    ActionCard(
-                        title = "세션 코드로 참가하기",
-                        icon = Icons.Default.Keyboard,
-                        containerColor = Color.White,
-                        contentColor = Color(0xFF1E293B),
-                        modifier = Modifier.fillMaxWidth(),
-                        onClick = { showJoinDialog = true }
-                    )
-                }
-            } else {
-                item {
-                    Row(
-                        modifier = Modifier.padding(top = 20.dp).fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
+            }
+
+            // 상단 액션 카드 (생성/참가)
+            item {
+                Row(
+                    modifier = Modifier.padding(top = 20.dp).fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    if (!viewModel.isGuest) {
                         ActionCard(
                             title = "세션 생성",
                             icon = Icons.Default.Add,
@@ -182,49 +184,61 @@ fun HomeScreen(
                             modifier = Modifier.weight(1f),
                             onClick = { showCreateDialog = true }
                         )
-                        ActionCard(
-                            title = "코드 참가",
-                            icon = Icons.Default.Keyboard,
-                            containerColor = Color.White,
-                            contentColor = Color(0xFF1E293B),
-                            modifier = Modifier.weight(1f),
-                            onClick = { showJoinDialog = true }
-                        )
                     }
+                    ActionCard(
+                        title = "코드 참가",
+                        icon = Icons.Default.Keyboard,
+                        containerColor = Color.White,
+                        contentColor = Color(0xFF1E293B),
+                        modifier = Modifier.weight(1f),
+                        onClick = { showJoinDialog = true }
+                    )
                 }
+            }
 
+            // 현재 세션 카드
+            item {
+                CurrentSessionCard(viewModel = viewModel)
+            }
+
+            // 최근 영상 처리 상태
+            item { SectionHeader(title = "최근 영상 처리 상태", showViewAll = true) }
+
+            if (viewModel.recentVideos.isEmpty()) {
                 item {
-                    CurrentSessionCard(viewModel = viewModel)
+                    Text("표시할 영상 데이터가 없습니다.", color = Color(0xFF94A3B8), fontSize = 14.sp, modifier = Modifier.padding(vertical = 8.dp))
                 }
+            } else {
+                items(viewModel.recentVideos) { video -> VideoStatusItem(video) }
+            }
 
-                item { SectionHeader(title = "최근 영상 처리 상태", showViewAll = true) }
-
-                if (viewModel.recentVideos.isEmpty()) {
-                    item { Text("최근 업로드된 영상이 없습니다.", color = Color(0xFF94A3B8), fontSize = 14.sp) }
-                } else {
-                    items(viewModel.recentVideos) { video -> VideoStatusItem(video) }
-                }
-
+            // 과거 기록 (회원 전용)
+            if (!viewModel.isGuest) {
                 item { SectionHeader(title = "과거 세션 기록", showViewAll = false) }
 
-                item {
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        color = Color.White,
-                        shape = RoundedCornerShape(24.dp),
-                        shadowElevation = 1.dp
-                    ) {
-                        Column {
-                            viewModel.sessionHistory.forEachIndexed { index, session ->
-                                SessionHistoryItem(session)
-                                if (index < viewModel.sessionHistory.size - 1) {
-                                    HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = Color(0xFFF1F5F9))
+                if (viewModel.sessionHistory.isEmpty()) {
+                    item { Text("이전 기록이 없습니다.", color = Color(0xFF94A3B8), fontSize = 13.sp) }
+                } else {
+                    item {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            color = Color.White,
+                            shape = RoundedCornerShape(24.dp),
+                            shadowElevation = 1.dp
+                        ) {
+                            Column {
+                                viewModel.sessionHistory.forEachIndexed { index, session ->
+                                    SessionHistoryItem(session)
+                                    if (index < viewModel.sessionHistory.size - 1) {
+                                        HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = Color(0xFFF1F5F9))
+                                    }
                                 }
                             }
                         }
                     }
                 }
             }
+
             item { Spacer(modifier = Modifier.height(40.dp)) }
         }
     }
@@ -261,22 +275,22 @@ fun CurrentSessionCard(viewModel: HomeViewModel) {
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             if (session != null) {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("현재 참여 중인 세션", fontSize = 12.sp, color = Color(0xFF64748B))
-                    IconButton(onClick = { viewModel.clearSession() }, modifier = Modifier.size(20.dp)) {
-                        Icon(Icons.Default.ExitToApp, null, tint = Color.Red)
+                    IconButton(onClick = { viewModel.clearSession() }, modifier = Modifier.size(24.dp)) {
+                        Icon(Icons.Default.ExitToApp, "나가기", tint = Color(0xFFEF4444))
                     }
                 }
                 Text("📌 ${session.sessionName}", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(session.sessionId, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF3366FF))
                     IconButton(onClick = { clipboardManager.setText(AnnotatedString(session.sessionId)) }) {
-                        Icon(Icons.Default.ContentCopy, null, modifier = Modifier.size(16.dp), tint = Color(0xFF94A3B8))
+                        Icon(Icons.Default.ContentCopy, "복사", modifier = Modifier.size(16.dp), tint = Color(0xFF94A3B8))
                     }
                 }
 
-                // ✅ 보안: 회원일 경우 게스트용 초대 코드와 만료 정보 표시
-                if (!viewModel.isGuest && viewModel.currentInviteCode.isNotEmpty()) {
+                // ✅ 초대 코드 및 만료 시간 표시
+                if (viewModel.currentInviteCode.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Surface(
                         color = Color(0xFFFFFBEC),
@@ -296,8 +310,10 @@ fun CurrentSessionCard(viewModel: HomeViewModel) {
                                     fontWeight = FontWeight.Bold,
                                     color = Color(0xFFD97706)
                                 )
+                                // 초 단위를 분으로 환산
+                                val remainingMin = viewModel.expiresIn / 60
                                 Text(
-                                    text = "보안을 위해 10분 후 코드가 만료됩니다.",
+                                    text = "보안을 위해 ${remainingMin}분 후 코드가 만료됩니다.",
                                     fontSize = 11.sp,
                                     color = Color(0xFFD97706).copy(alpha = 0.8f)
                                 )
@@ -306,7 +322,11 @@ fun CurrentSessionCard(viewModel: HomeViewModel) {
                     }
                 }
             } else {
-                Text("현재 참여 중인 세션이 없습니다.", fontSize = 14.sp, color = Color(0xFF64748B), modifier = Modifier.padding(vertical = 8.dp))
+                Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+                    Icon(Icons.Default.Info, null, tint = Color(0xFFCBD5E1), modifier = Modifier.size(32.dp))
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text("참여 중인 세션이 없습니다.", fontSize = 14.sp, color = Color(0xFF94A3B8))
+                }
             }
         }
     }
@@ -321,16 +341,22 @@ fun VideoStatusItem(video: VideoStatus) {
         shadowElevation = 1.dp
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(modifier = Modifier.size(60.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFF1F5F9))) {
-                if (video.status == "PROCESSING") {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp).align(Alignment.Center), color = Color(0xFF3366FF), strokeWidth = 2.dp)
+            Box(modifier = Modifier.size(50.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFF1F5F9)), contentAlignment = Alignment.Center) {
+                if (video.status == "PROCESSING" || video.status == "PENDING") {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color(0xFF3366FF), strokeWidth = 2.dp)
+                } else {
+                    Icon(Icons.Default.VideoFile, null, tint = Color(0xFF3366FF))
                 }
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(video.fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
-                val statusMsg = if (video.status == "PROCESSING") "프록시 생성 중..." else "클라우드 동기화 완료"
-                Text(statusMsg, color = Color(0xFF64748B), fontSize = 12.sp, modifier = Modifier.padding(vertical = 4.dp))
+                val statusMsg = when(video.status) {
+                    "PROCESSING" -> "프록시 생성 중..."
+                    "PENDING" -> "대기 중..."
+                    else -> "클라우드 동기화 완료"
+                }
+                Text(statusMsg, color = Color(0xFF64748B), fontSize = 12.sp)
             }
             if (video.status == "COMPLETED") {
                 Surface(color = Color(0xFFDCFCE7), shape = CircleShape) {
@@ -344,8 +370,8 @@ fun VideoStatusItem(video: VideoStatus) {
 @Composable
 fun SectionHeader(title: String, showViewAll: Boolean) {
     Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-        Text(title, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
-        if (showViewAll) Text("전체보기", fontSize = 12.sp, color = Color(0xFF94A3B8), modifier = Modifier.clickable { })
+        Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1E293B))
+        if (showViewAll) Text("새로고침", fontSize = 12.sp, color = Color(0xFF3366FF), modifier = Modifier.clickable { /* Refresh logic */ })
     }
 }
 

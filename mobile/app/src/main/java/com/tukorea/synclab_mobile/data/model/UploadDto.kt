@@ -1,17 +1,19 @@
 package com.tukorea.synclab_mobile.data.model
 
+import com.google.gson.annotations.SerializedName
+
 // 1. 서버에 분할 업로드를 시작할 때 받는 응답
 data class InitUploadResponse(
-    val uploadId: String,           // S3 Multipart Upload ID
-    val presignedUrls: List<String>, // 각 5MB 조각에 대응하는 URL들
-    val s3Key: String
+    @SerializedName("upload_id") val uploadId: String,           // uploadId -> upload_id
+    @SerializedName("presigned_urls") val presignedUrls: List<String>, // presignedUrls -> presigned_urls
+    @SerializedName("s3_key") val s3Key: String                  // s3Key -> s3_key
 )
 
-// 2. 서버에 업로드 완료 보고 + 메타데이터를 한 번에 보낼 때 쓰는 요청
+// 3. 서버에 업로드 완료 보고 요청
 data class CompleteUploadRequest(
-    val sessionId: String,       // ⭐️ 필수 추가: 어느 세션인지 알려줌
-    val uploadId: String,
-    val videoName: String,
+    @SerializedName("session_id") val sessionId: String,         // sessionId -> session_id
+    @SerializedName("upload_id") val uploadId: String,           // uploadId -> upload_id
+    @SerializedName("video_name") val videoName: String,         // videoName -> video_name
     val etags: List<String>,
     val metadata: VideoMetadata
 )

@@ -12,7 +12,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.ripple.rememberRipple
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -30,13 +29,16 @@ import com.tukorea.synclab_mobile.data.model.VideoMetadata
 import com.tukorea.synclab_mobile.data.repository.UploadRepository
 import com.tukorea.synclab_mobile.ui.screens.home.HomeViewModel
 import com.tukorea.synclab_mobile.utils.VideoFileManager
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UploadScreen(navController: NavController,
-                 homeViewModel: HomeViewModel
+fun UploadScreen(
+    navController: NavController,
+    homeViewModel: HomeViewModel
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -65,7 +67,10 @@ fun UploadScreen(navController: NavController,
             text = { Text("'${fileToDelete?.name}' 영상을 삭제하시겠습니까?") },
             confirmButton = {
                 TextButton(onClick = {
-                    fileToDelete?.let { VideoFileManager.deleteFile(it); loadData() }
+                    fileToDelete?.let {
+                        VideoFileManager.deleteFile(it)
+                        loadData()
+                    }
                     showDeleteDialog = false
                 }) { Text("삭제", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold) }
             },
@@ -93,8 +98,9 @@ fun UploadScreen(navController: NavController,
                 .fillMaxSize()
                 .padding(paddingValues)
                 .background(Color(0xFFF8F9FA))
-                .padding(horizontal = 20.dp) // 여백 약간 조정
+                .padding(horizontal = 20.dp)
         ) {
+            // 업로드 상태 표시 바
             if (isUploading) {
                 Surface(
                     modifier = Modifier.padding(top = 16.dp).fillMaxWidth(),
@@ -119,7 +125,6 @@ fun UploadScreen(navController: NavController,
             }
 
             Spacer(modifier = Modifier.height(24.dp))
-
             Text("보관함 영상 (${videoFiles.size})", fontSize = 16.sp, fontWeight = FontWeight.Bold)
 
             if (videoFiles.isEmpty()) {
@@ -135,18 +140,80 @@ fun UploadScreen(navController: NavController,
                     items(videoFiles) { file ->
                         VideoFileItem(
                             file = file,
-                            onDelete = { fileToDelete = file; showDeleteDialog = true },
+                            onDelete = {
+                                fileToDelete = file
+                                showDeleteDialog = true
+                            },
                             onUpload = {
                                 scope.launch {
+                                    Log.d("UploadScreen", "🔘 업로드 버튼 클릭됨: ${file.name}")
                                     isUploading = true
                                     uploadProgress = 0f
-                                    val jsonFile = File(file.parent, file.nameWithoutExtension + ".json")
-                                    val metadata = try { Gson().fromJson(jsonFile.readText(), VideoMetadata::class.java) } catch (e: Exception) { null }
-                                    if (metadata != null) {
-                                        repository.uploadVideoToS3(file, metadata) { uploadProgress = it }
-                                        loadData()
+
+                                    try {
+                                        // 1. JSON 메타데이터 읽기 시도
+                                        val jsonFile = File(file.parent, file.nameWithoutExtension + ".json")
+                                        var metadata: VideoMetadata? = null
+
+                                        if (jsonFile.exists()) {
+                                            metadata = try {
+                                                Gson().fromJson(jsonFile.readText(), VideoMetadata::class.java)
+                                            } catch (e: Exception) {
+                                                Log.e("UploadScreen", "❌ JSON 파싱 실패: ${e.message}")
+                                                null
+                                            }
+                                        }
+
+                                        // 2. 메타데이터가 없으면 현재 활성 세션 정보 주입
+                                        // 2. 만약 메타데이터가 없거나 세션ID가 없으면 현재 세션ID 강제 할당
+                                        if (metadata == null || metadata.sessionId.isNullOrEmpty()) {
+                                            val currentSid = homeViewModel.currentSession?.sessionId
+                                            if (currentSid != null) {
+                                                Log.w("UploadScreen", "⚠️ 메타데이터 없음. 기본값으로 객체 생성 시도")
+
+                                                // ⭐️ 모든 필수 파라미터에 기본값을 채워넣어 생성합니다.
+                                                metadata = VideoMetadata(
+                                                    videoName = file.name,
+                                                    fileName = file.name,
+                                                    absoluteStartTime = System.currentTimeMillis(),
+                                                    absoluteEndTime = System.currentTimeMillis(),
+                                                    duration = 0.0,
+                                                    sessionId = currentSid
+                                                )
+                                            }
+                                        }
+
+                                        // 3. 최종 체크 및 전송
+                                        if (metadata != null && !metadata.sessionId.isNullOrEmpty()) {
+                                            Log.d("UploadScreen", "🚀 전송 시작: SessionId=${metadata.sessionId}")
+                                            val result = repository.uploadVideoToS3(file, metadata) {
+                                                uploadProgress = it
+                                            }
+
+                                            if (result.isSuccess) {
+                                                Log.d("UploadScreen", "✅ 업로드 완료!")
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(context, "업로드 완료!", Toast.LENGTH_SHORT).show()
+                                                    loadData()
+                                                }
+                                            } else {
+                                                val errorMsg = result.exceptionOrNull()?.message
+                                                Log.e("UploadScreen", "❌ 업로드 실패: $errorMsg")
+                                                withContext(Dispatchers.Main) {
+                                                    Toast.makeText(context, "오류: $errorMsg", Toast.LENGTH_LONG).show()
+                                                }
+                                            }
+                                        } else {
+                                            Log.e("UploadScreen", "❌ 중단: 세션 ID를 찾을 수 없음")
+                                            withContext(Dispatchers.Main) {
+                                                Toast.makeText(context, "참여 중인 세션이 없습니다.", Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                    } catch (e: Exception) {
+                                        Log.e("UploadScreen", "🔥 예기치 못한 에러: ${e.message}")
+                                    } finally {
+                                        isUploading = false
                                     }
-                                    isUploading = false
                                 }
                             }
                         )
@@ -156,6 +223,7 @@ fun UploadScreen(navController: NavController,
         }
     }
 }
+
 @Composable
 fun VideoFileItem(file: File, onDelete: () -> Unit, onUpload: () -> Unit) {
     Surface(
@@ -168,7 +236,6 @@ fun VideoFileItem(file: File, onDelete: () -> Unit, onUpload: () -> Unit) {
             modifier = Modifier.padding(12.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // 비디오 아이콘
             Box(
                 modifier = Modifier.size(44.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFFF1F5F9)),
                 contentAlignment = Alignment.Center
@@ -178,13 +245,11 @@ fun VideoFileItem(file: File, onDelete: () -> Unit, onUpload: () -> Unit) {
 
             Spacer(modifier = Modifier.width(10.dp))
 
-            // 파일 정보
             Column(modifier = Modifier.weight(1f)) {
                 Text(file.name, fontWeight = FontWeight.Bold, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("${String.format("%.1f", file.length() / (1024.0 * 1024.0))} MB", fontSize = 11.sp, color = Color.Gray)
             }
 
-            // 버튼 영역 (중첩 문제 및 Deprecated API 해결)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 CustomSmallButton(
                     icon = Icons.Default.CloudUpload,
@@ -207,12 +272,11 @@ fun VideoFileItem(file: File, onDelete: () -> Unit, onUpload: () -> Unit) {
 fun CustomSmallButton(icon: androidx.compose.ui.graphics.vector.ImageVector, tint: Color, bgColor: Color, onClick: () -> Unit) {
     Box(
         modifier = Modifier
-            .size(32.dp) // 버튼 크기 고정 (절대 안겹침)
+            .size(32.dp)
             .clip(CircleShape)
             .background(bgColor)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                // ✅ 최신 Ripple API 적용 (경고 해결)
                 indication = ripple(bounded = true, color = tint),
                 onClick = onClick
             ),

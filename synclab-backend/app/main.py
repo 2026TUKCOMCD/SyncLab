@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.routers import web_video
-from app.routers import web_auth , mobile_session ,mobile_video, mobile_auth
+from app.routers import web_auth , mobile_session ,mobile_video, mobile_auth, mobile_home
 from app.routers import session
 from app.database.connection import test_connection
 import os
@@ -34,6 +34,7 @@ app.include_router(session.router)
 app.include_router(mobile_session.router)
 app.include_router(mobile_video.router)
 app.include_router(mobile_auth.router)
+app.include_router(mobile_home.router)
 
 # 시작 이벤트
 @app.on_event("startup")

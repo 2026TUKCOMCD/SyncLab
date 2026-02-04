@@ -18,6 +18,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.tukorea.synclab_mobile.R
+import com.tukorea.synclab_mobile.api.NetworkClient
+import com.tukorea.synclab_mobile.data.model.LoginRequest
+import com.tukorea.synclab_mobile.utils.AuthManager
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -26,6 +30,9 @@ fun LoginScreen(
     onGuestLogin: (String) -> Unit // 6자리 초대 코드를 전달함
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    // 토큰 저장을 위한 AuthManager 인스턴스
+    val authManager = remember { AuthManager(context) }
 
     var userId by remember { mutableStateOf("") }
     var userPw by remember { mutableStateOf("") }
@@ -54,7 +61,6 @@ fun LoginScreen(
                     OutlinedTextField(
                         value = inviteCodeInput,
                         onValueChange = { input ->
-                            // ✅ 6자리 제한 및 숫자만 허용 (HomeViewModel 규격과 일치)
                             if (input.length <= 6 && input.all { it.isDigit() }) {
                                 inviteCodeInput = input
                             }
@@ -62,7 +68,6 @@ fun LoginScreen(
                         label = { Text("6자리 숫자 코드") },
                         placeholder = { Text("예: 123456") },
                         singleLine = true,
-                        // ✅ 숫자 키패드 강제
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                         modifier = Modifier.fillMaxWidth(),
                         shape = MaterialTheme.shapes.medium
@@ -77,7 +82,6 @@ fun LoginScreen(
             },
             confirmButton = {
                 Button(
-                    // ✅ 6자리가 정확히 입력되었을 때만 활성화
                     enabled = inviteCodeInput.length == 6,
                     onClick = {
                         isProcessing = true
@@ -92,7 +96,7 @@ fun LoginScreen(
                 TextButton(onClick = {
                     showGuestDialog = false
                     isProcessing = false
-                    inviteCodeInput = "" // 입력값 초기화
+                    inviteCodeInput = ""
                 }) {
                     Text("취소")
                 }
@@ -157,15 +161,41 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // 2. 메인 로그인 버튼 (회원 전용)
+            // 2. 메인 로그인 버튼 (서버 연동)
+            // LoginScreen.kt 내부 버튼 클릭 로직
             Button(
                 enabled = !isProcessing,
                 onClick = {
-                    if (userId == "111" && userPw == "111") {
+                    if (userId.isNotBlank() && userPw.isNotBlank()) {
                         isProcessing = true
-                        onLoginSuccess()
+                        coroutineScope.launch {
+                            try {
+                                // ✅ homeService 대신 authService 호출
+                                val response = NetworkClient.authService.login(LoginRequest(userId, userPw))
+
+                                if (response.isSuccessful) {
+                                    val loginBody = response.body()
+                                    if (loginBody?.status == "success") {
+                                        // 서버가 준 JWT 토큰 저장
+                                        authManager.saveToken(loginBody.accessToken)
+                                        onLoginSuccess()
+                                    } else {
+                                        Toast.makeText(context, "로그인 정보가 틀렸습니다.", Toast.LENGTH_SHORT).show()
+                                    }
+                                } else {
+                                    Toast.makeText(context, "인증 실패 (오류 코드: ${response.code()})", Toast.LENGTH_SHORT).show()
+                                }
+                            } catch (e: Exception) {
+                                Toast.makeText(context, "네트워크 에러: ${e.message}", Toast.LENGTH_SHORT).show()
+                            } finally {
+                                isProcessing = false
+                            }
+                        }
+
+
+                // ... 스타일 유지
                     } else {
-                        Toast.makeText(context, "아이디 또는 비밀번호가 틀렸습니다.", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "아이디와 비밀번호를 입력해주세요.", Toast.LENGTH_SHORT).show()
                     }
                 },
                 modifier = Modifier
@@ -186,7 +216,7 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // 3. 비회원 로그인 버튼 (클릭 시 팝업 노출)
+            // 3. 비회원 로그인 버튼
             OutlinedButton(
                 enabled = !isProcessing,
                 onClick = {

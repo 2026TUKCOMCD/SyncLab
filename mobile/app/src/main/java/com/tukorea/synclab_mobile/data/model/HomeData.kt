@@ -2,20 +2,20 @@ package com.tukorea.synclab_mobile.data.model
 
 import com.google.gson.annotations.SerializedName
 
-// --- 1. 공통 정보 모델 (여기 같이 있어야 에러가 안 납니다) ---
+// --- 1. 공통 정보 모델 ---
 
 data class SessionInfo(
-    val sessionId: String,
-    val sessionName: String,
-    val createdAt: String,
-    val participantCount: Int,
-    val connectCode: String? = null,
-    val expiresAt: Long? = null
+    @SerializedName("session_id") val sessionId: String,
+    @SerializedName("session_name") val sessionName: String,
+    @SerializedName("created_at") val createdAt: String,
+    @SerializedName("participant_count") val participantCount: Int,
+    @SerializedName("connect_code") val connectCode: String? = null,
+    @SerializedName("expires_at") val expiresAt: Long? = null
 )
 
 data class VideoStatus(
-    val videoId: String,
-    val fileName: String,
+    @SerializedName("video_id") val videoId: String,
+    @SerializedName("file_name") val fileName: String,
     val status: String, // "PENDING", "PROCESSING", "COMPLETED"
     val timestamp: Long
 )
@@ -38,16 +38,16 @@ data class VerifyCodeResponse(
 data class HomeDataResponse(
     @SerializedName("current_session") val currentSession: SessionInfo?,
     val history: List<SessionInfo>,
-    val videos: Map<String, List<VideoStatus>>,
+    // 서버에서 videos: Optional[Dict[str, List[Any]]] 로 정의했으므로 대응
+    val videos: Map<String, List<VideoStatus>>? = null,
     @SerializedName("temp_codes") val tempCodes: Map<String, Any>? = null
 )
 
 data class SessionCreateRequest(
-    @SerializedName("session_id") val sessionId: String? = null,
-    @SerializedName("user_pk") val userPk: Int? = null
-)
-data class SessionJoinRequest(
-    @SerializedName("session_id") val sessionId: String? = null,
-    @SerializedName("user_pk") val userPk: Int? = null
+    @SerializedName("name") val sessionName: String? = null, // 서버 SessionActionRequest 필드명 반영
+
 )
 
+data class SessionJoinRequest(
+    @SerializedName("invite_code") val inviteCode: String, // 세션 참가는 invite_code를 사용
+)

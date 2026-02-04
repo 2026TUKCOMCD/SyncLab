@@ -3,26 +3,24 @@ package com.tukorea.synclab_mobile.data.repository
 import android.util.Log
 import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.data.api.HomeService
-import com.tukorea.synclab_mobile.data.model.SessionCreateRequest
-import com.tukorea.synclab_mobile.data.model.SessionJoinRequest
-import com.tukorea.synclab_mobile.data.model.SessionResponse
-import com.tukorea.synclab_mobile.data.model.VerifyCodeResponse
+import com.tukorea.synclab_mobile.data.model.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class HomeRepository {
-    // NetworkClient에서 정의한 이름과 일치하도록 수정 (소문자 h)
     private val api: HomeService = NetworkClient.homeService
 
     /**
-     * [PC/관리자 측면] 세션 생성 + 6자리 임시 코드 수신
+     * [PC/관리자] 세션 생성 (name만 전송)
      */
-    suspend fun createNewSession(sessionId: String, userPk: Int): Result<SessionResponse> {
+    suspend fun createNewSession(name: String): Result<SessionResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                val request = SessionCreateRequest(sessionId = sessionId, userPk = userPk)
+                // SessionCreateRequest(sessionName = name) -> @SerializedName("name")으로 서버에 전달됨
+                val request = SessionCreateRequest(sessionName = name)
                 val response = api.createSession(request)
-                Log.d("HomeRepository", "🚀 세션 생성 성공 ID: ${response.session.sessionId}, 코드: ${response.tempCode}")
+
+                Log.d("HomeRepository", "🚀 세션 생성 성공 ID: ${response.session.sessionId}")
                 Result.success(response)
             } catch (e: Exception) {
                 Log.e("HomeRepository", "❌ 세션 생성 실패: ${e.message}")
@@ -32,7 +30,7 @@ class HomeRepository {
     }
 
     /**
-     * [모바일/참가자 측면] 6자리 숫자로 세션 정보 조회
+     * [모바일/참가자] 6자리 숫자로 세션 정보 조회
      */
     suspend fun verifyConnectCode(code: String): Result<VerifyCodeResponse> {
         return withContext(Dispatchers.IO) {
@@ -48,15 +46,18 @@ class HomeRepository {
     }
 
     /**
-     * 세션 참가 (기존 세션 ID 직접 입력 방식)
+     * [세션 참가] 초대 코드를 사용하여 세션 입장
      */
-    suspend fun joinSession(sessionId: String): Result<SessionResponse> {
+    suspend fun joinSession(inviteCode: String): Result<SessionResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                val request = SessionJoinRequest(sessionId = sessionId)
+                // SessionJoinRequest(inviteCode = inviteCode) -> @SerializedName("invite_code")로 서버에 전달됨
+                val request = SessionJoinRequest(inviteCode = inviteCode)
                 val response = api.joinSession(request)
+                Log.d("HomeRepository", "✅ 세션 참가 성공: ${response.session.sessionName}")
                 Result.success(response)
             } catch (e: Exception) {
+                Log.e("HomeRepository", "❌ 세션 참가 실패: ${e.message}")
                 Result.failure(e)
             }
         }
@@ -71,6 +72,7 @@ class HomeRepository {
                 val response = api.getSessionVideos(sessionId)
                 Result.success(response)
             } catch (e: Exception) {
+                Log.e("HomeRepository", "❌ 영상 조회 실패: ${e.message}")
                 Result.failure(e)
             }
         }

@@ -10,31 +10,33 @@ DROP TABLE IF EXISTS session;
 DROP TABLE IF EXISTS user;
 
 -- ==============================================================
--- 1. user 테이블: 사용자 계정 정보를 관리
+-- 1. user 테이블
 -- ==============================================================
 CREATE TABLE user (
-    user_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '내부 관리용 유저 고유 번호 (정수 PK)',
-    id VARCHAR(16) UNIQUE NOT NULL COMMENT '앱 로그인용 아이디 (String: LoginRequest.userId)',
-    password VARCHAR(16) NOT NULL COMMENT '비밀번호 (String: LoginRequest.userPw)',
-    user_name VARCHAR(100) NOT NULL COMMENT '사용자 이름 (LoginResponse.userName)',
+    user_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '내부 관리용 유저 고유 번호',
+    id VARCHAR(16) UNIQUE NOT NULL COMMENT '앱 로그인용 아이디',
+    password VARCHAR(16) NOT NULL COMMENT '비밀번호',
+    user_name VARCHAR(100) NOT NULL COMMENT '사용자 이름',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '계정 생성 일시'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='사용자 계정 정보';
 
 -- ==============================================================
--- 2. session 테이블: 촬영 세션(방) 정보를 관리
+-- 2. session 테이블: ID를 VARCHAR(50)으로 변경
 -- ==============================================================
 CREATE TABLE session (
-    session_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '세션 고유 번호 (정수 PK: 1부터 자동 증가)',
-    session_name VARCHAR(200) NULL COMMENT '세션 이름 (SessionActionRequest.name)',
-    invite_code VARCHAR(8) UNIQUE NOT NULL COMMENT '8자리 랜덤 초대 코드 (앱 표시용: connectCode)',
+    -- ⭐️ AUTO_INCREMENT를 제거하고 문자열 PK로 설정
+    session_id VARCHAR(50) PRIMARY KEY COMMENT '세션 고유 문자열 ID (예: SID_20260204_a1b2c3)',
+    session_name VARCHAR(200) NULL COMMENT '세션 이름',
+    invite_code VARCHAR(8) UNIQUE NOT NULL COMMENT '8자리 랜덤 초대 코드',
+    expires_at DATETIME NULL COMMENT '세션 만료 일시',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '세션 생성 일시'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='촬영 세션(방) 정보';
 
 -- ==============================================================
--- 3. user_session 테이블: 유저가 어떤 세션에 참가 중인지 관리 (N:M 관계)
+-- 3. user_session 테이블: 세션 ID 타입 일치 및 문법 교정
 -- ==============================================================
 CREATE TABLE user_session (
-    session_session_id INT NOT NULL COMMENT '참조하는 세션의 고유 번호',
+    session_session_id VARCHAR(50) NOT NULL COMMENT '참조하는 세션의 고유 번호', -- ✅ COMMENT 키워드 추가
     user_user_id INT NOT NULL COMMENT '참조하는 유저의 고유 번호',
     joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '세션 참가 일시',
     PRIMARY KEY (session_session_id, user_user_id),
@@ -43,40 +45,25 @@ CREATE TABLE user_session (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='유저-세션 참가 정보';
 
 -- ==============================================================
--- 4. video 테이블: 업로드된 영상 파일 및 동기화 메타데이터를 관리
--- [수정사항] 오타 수정(absoulte -> absolute) 및 앱 필드 매핑 명확화
+-- 4. video 테이블: 중복 선언 제거 및 외래키 타입 일치
 -- ==============================================================
--- 4. video 테이블: 코드의 변수명과 1:1 매칭되도록 수정
 CREATE TABLE video (
-<<<<<<< HEAD
     video_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '영상 고유 번호',
-    sessionId INT NOT NULL COMMENT '영상이 소속된 세션 번호 (FK)', 
-    s3_url VARCHAR(300) UNIQUE NOT NULL COMMENT '전체 경로 (fullPath)',
-    video_name VARCHAR(255) NOT NULL COMMENT '파일명 (fileName)',
-    upload_status VARCHAR(20) NOT NULL DEFAULT 'PENDING' COMMENT '업로드 상태',
-    absoluteStartTime BIGINT NOT NULL COMMENT '촬영 시작 절대 시간 (ms)', 
-    absoluteEndTime BIGINT NOT NULL COMMENT '촬영 종료 절대 시간 (ms)', 
+    session_session_id VARCHAR(50) NOT NULL COMMENT '영상이 소속된 세션 번호', -- ✅ FK 타입 일치
+    s3_url VARCHAR(300) UNIQUE NOT NULL COMMENT 'S3 저장 주소 (sessionId/fileName)',
+    video_name VARCHAR(255) NOT NULL COMMENT '사용자가 설정한 영상 이름',
+    upload_status VARCHAR(10) NOT NULL DEFAULT 'PENDING' COMMENT '업로드 상태 (PENDING, PROCESSING, COMPLETED)',
+    absolute_start_time BIGINT NOT NULL COMMENT '촬영 시작 절대 시간 (ms)', 
+    absolute_end_time BIGINT NOT NULL COMMENT '촬영 종료 절대 시간 (ms)',
     duration DOUBLE NOT NULL COMMENT '영상 길이 (초)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    
-    -- 외래키 설정 (부모 테이블인 session의 session_id를 참조)
-    CONSTRAINT fk_video_session FOREIGN KEY (sessionId) REFERENCES session(session_id) ON DELETE CASCADE
-=======
-    video_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '영상 고유 번호 (정수 PK)',
-    session_session_id INT NOT NULL COMMENT '영상이 소속된 세션 번호 (CompleteUploadRequest.sessionId)',
-    s3_url VARCHAR(300) UNIQUE NOT NULL COMMENT '원본 영상의 S3 저장 주소 (sessionId/fileName 조합)',
-    video_name VARCHAR(255) NOT NULL COMMENT '사용자가 설정한 영상 이름 (CompleteUploadRequest.videoName)',
-    upload_status VARCHAR(10) NOT NULL DEFAULT 'PENDING' COMMENT '업로드 상태 (PENDING, PROCESSING, COMPLETED)',
-    absolute_start_time BIGINT NOT NULL COMMENT '촬영 시작 절대 시간 (ms: VideoMetadata.absoluteStartTime)', 
-    absolute_end_time BIGINT NOT NULL COMMENT '촬영 종료 절대 시간 (ms: VideoMetadata.absoluteEndTime)',
-    duration DOUBLE NOT NULL COMMENT '영상 길이 (초: VideoMetadata.duration)',
     CONSTRAINT fk_video_session FOREIGN KEY (session_session_id) REFERENCES session(session_id) ON DELETE CASCADE
->>>>>>> 07a1f8c96be886ce938a588b7bfe038e7ffff5e2
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='업로드 영상 및 동기화 메타데이터';
+
 -- ==============================================================
 -- 테스트 데이터 삽입
 -- ==============================================================
 INSERT INTO user (id, password, user_name) VALUES ('111', '111', '테스트 관리자');
 
-SELECT '✅ SyncLab 스키마(앱 구조 최적화) 생성 완료!' AS status;
+SELECT '✅ SyncLab 스키마(문자열 ID 최적화) 생성 완료!' AS status;
 SHOW TABLES;

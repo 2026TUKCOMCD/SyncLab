@@ -1,15 +1,18 @@
 package com.tukorea.synclab_mobile.data.model
 
+import com.google.gson.annotations.SerializedName
+
 data class LoginRequest(
-    val userId: String,
-    val userPw: String
+    @SerializedName("id") val userId: String,        // 서버 UserLogin 모델의 'id'와 매핑
+    @SerializedName("password") val userPw: String   // 서버 UserLogin 모델의 'password'와 매핑
 )
 
 data class LoginResponse(
     val status: String,
-    val userId: String,
-    val userPk: Int,
-    val userName: String,
-    val currentSessionId: String?, // 현재 참여 중인 세션 ID
-    val lastJoinedAt: Long?       // 마지막 참여 시간
+    @SerializedName("access_token") val accessToken: String, // ✅ 서버의 access_token과 매핑
+    @SerializedName("id") val userId: String,               // 서버의 id와 매핑
+    @SerializedName("user_pk") val userPk: Int,             // 서버의 user_pk와 매핑
+    @SerializedName("user_name") val userName: String,       // 서버의 user_name과 매핑
+    @SerializedName("current_session_id") val currentSessionId: String?,
+    @SerializedName("last_joined_at") val lastJoinedAt: Long?
 )

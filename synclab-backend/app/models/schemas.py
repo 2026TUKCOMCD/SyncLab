@@ -1,8 +1,3 @@
-# -*- coding: utf-8 -*-
-# app/models/schemas.py
-"""
-모든 Pydantic 모델 정의 (API 명세 기반)
-"""
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any
 from datetime import datetime
@@ -24,17 +19,26 @@ class VideoStatus(str, Enum):
 
 
 # ============================================
-# 인증 관련 (웹)
+# 인증 관련 (웹 & 모바일)
 # ============================================
 
-class Usercreate(BaseModel):
+class Usercreate(BaseModel):  # web_auth.py에서 사용
+    id: str
+    password: str
+    user_name: str
+
+class Userlogin(BaseModel):   # web_auth.py에서 사용
+    id: str
+    password: str
+
+class UserCreate(BaseModel):
     """회원가입 요청"""
     id: str
     password: str
     user_name: str
 
 
-class Userlogin(BaseModel):
+class UserLogin(BaseModel):
     """로그인 요청"""
     id: str
     password: str
@@ -44,23 +48,34 @@ class LoginResponse(BaseModel):
     """로그인 결과"""
     status: str
     message: str
-    userName: str
+    user_name: str       # userName -> user_name
+    access_token: Optional[str] = None
 
 
 # ============================================
 # 세션 관련 (모바일)
 # ============================================
 
+class SessionInfo(BaseModel):
+    """세션 상세 정보"""
+    session_id: str             # sessionId -> session_id
+    session_name: str           # sessionName -> session_name
+    created_at: str             # createdAt -> created_at
+    participant_count: int      # participantCount -> participant_count
+    connect_code: Optional[str] = None # connectCode -> connect_code
+    expires_at: Optional[int] = None   # expiresAt -> expires_at
+
+
 class SessionActionRequest(BaseModel):
     """세션 생성/참가 요청"""
-    user_pk: int
+    user_pk: Optional[int] = None # 토큰 인증 시 선택 사항
     name: Optional[str] = None
 
 
 class SessionResponse(BaseModel):
     """세션 결과"""
     status: str
-    session: Dict[str, Any]
+    session: SessionInfo        # Dict[str, Any]에서 SessionInfo로 구체화
     temp_code: Optional[str] = None
     expires_in: Optional[int] = None
 
@@ -68,7 +83,7 @@ class SessionResponse(BaseModel):
 class VerifyCodeResponse(BaseModel):
     """코드 검증 결과"""
     status: str
-    session_id: str
+    session_id: str             # session_id (기존 유지)
 
 
 # ============================================
@@ -77,7 +92,7 @@ class VerifyCodeResponse(BaseModel):
 
 class HomeDataResponse(BaseModel):
     """홈 데이터"""
-    current_session: Optional[Dict[str, Any]] = None
+    current_session: Optional[SessionInfo] = None # Dict에서 SessionInfo로 변경 가능
     history: List[Dict[str, Any]]
     videos: Optional[Dict[str, List[Any]]] = None
 
@@ -88,26 +103,26 @@ class HomeDataResponse(BaseModel):
 
 class VideoMetadata(BaseModel):
     """영상 메타데이터"""
-    fileName: str
-    absoluteStartTime: int
-    absoluteEndTime: int
+    file_name: str              # fileName -> file_name
+    absolute_start_time: int    # absoluteStartTime -> absolute_start_time
+    absolute_end_time: int      # absoluteEndTime -> absolute_end_time
     duration: float
 
 
 class CompleteUploadRequest(BaseModel):
     """업로드 완료 요청"""
-    sessionId: str
-    uploadId: str
-    videoName: str
+    session_id: str             # sessionId -> session_id
+    upload_id: str              # uploadId -> upload_id
+    video_name: str             # videoName -> video_name
     etags: List[str]
     metadata: VideoMetadata
 
 
 class UploadInitResponse(BaseModel):
     """업로드 초기화 응답"""
-    uploadId: str
-    presignedUrls: List[str]
-    s3Key: str
+    upload_id: str              # uploadId -> upload_id
+    presigned_urls: List[str]   # presignedUrls -> presigned_urls
+    s3_key: str                 # s3Key -> s3_key
 
 
 class CompleteUploadResponse(BaseModel):
@@ -131,25 +146,25 @@ class ProxyCheckResponse(BaseModel):
 
 
 # ============================================
-# 기존 모델 (호환성 유지)
+# 기존 모델 (호환성 유지 및 Snake Case 변환)
 # ============================================
 
 class PresignedUrlRequest(BaseModel):
     """Presigned URL 요청"""
-    sessionId: str = Field(..., min_length=1, max_length=100)
-    cameraId: int = Field(..., ge=1)
-    fileName: str = Field(..., min_length=1)
-    ntpStartTime: Optional[int] = None
-    ntpEndTime: Optional[int] = None
+    session_id: str = Field(..., min_length=1, max_length=100) # sessionId -> session_id
+    camera_id: int = Field(..., ge=1)                         # cameraId -> camera_id
+    file_name: str = Field(..., min_length=1)                 # fileName -> file_name
+    ntp_start_time: Optional[int] = None                      # ntpStartTime -> ntp_start_time
+    ntp_end_time: Optional[int] = None                        # ntpEndTime -> ntp_end_time
 
 
 class PresignedUrlResponse(BaseModel):
     """Presigned URL 응답"""
     success: bool
-    uploadUrl: str
-    videoId: int
-    s3Key: str
-    expiresIn: int
+    upload_url: str             # uploadUrl -> upload_url
+    video_id: int               # videoId -> video_id
+    s3_key: str
+    expires_in: int             # expiresIn -> expires_in
     bucket: str
 
 
@@ -171,19 +186,3 @@ class ProxyRequest(BaseModel):
     video_id: int
     target_resolution: str = "1280x720"
     crf: int = Field(default=23, ge=0, le=51)
-
-   # 추가됨 ---------------------------------------------#
-class SessionInfo(BaseModel):
-    sessionId: str
-    sessionName: str
-    createdAt: str
-    participantCount: int
-    connectCode: Optional[str] = None
-    expiresAt: Optional[int] = None
-
-
-class SessionResponse(BaseModel):
-    status: str
-    session: SessionInfo
-    temp_code: Optional[str] = None    # 앱의 @SerializedName("temp_code") 대응
-    expires_in: Optional[int] = None

@@ -28,6 +28,7 @@ import androidx.navigation.NavDestination.Companion.hierarchy
 import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.ui.navigation.NavGraph
 import com.tukorea.synclab_mobile.ui.theme.SyncLab_MobileTheme
 import com.tukorea.synclab_mobile.utils.PermissionHelper
@@ -45,6 +46,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        NetworkClient.init(applicationContext)
         setContent {
             SyncLab_MobileTheme {
                 Surface(
