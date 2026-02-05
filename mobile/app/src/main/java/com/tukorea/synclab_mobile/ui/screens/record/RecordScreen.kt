@@ -16,11 +16,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.work.*
 import com.tukorea.synclab_mobile.Screen
 import com.tukorea.synclab_mobile.ui.screens.home.HomeViewModel
 import com.tukorea.synclab_mobile.utils.NtpSyncManager
+import com.tukorea.synclab_mobile.ui.screens.upload.VideoUploadWorker // 경로 확인!
 import kotlinx.coroutines.launch
 import java.io.File
+import java.util.concurrent.TimeUnit
 import org.json.JSONObject
 
 @Composable
@@ -28,7 +31,6 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
-    // 현재 세션 ID (ViewModel에서 가져옴)
     val sessionId = homeViewModel.currentSession?.sessionId ?: "default_session"
 
     var isRecording by remember { mutableStateOf(false) }
@@ -43,7 +45,6 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
                 currentRecording = recording
             },
             onRecordingFinished = { file ->
-                // 1. JSON 메타데이터 생성 (sessionId 포함)
                 val duration = (absoluteEndTime - absoluteStartTime) / 1000.0
                 val metadataJson = JSONObject().apply {
                     put("absoluteStartTime", absoluteStartTime)
@@ -51,20 +52,48 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
                     put("duration", String.format("%.3f", duration).toDouble())
                     put("fileName", file.name)
                     put("videoName", file.name)
-                    put("sessionId", sessionId) // ✅ 업로드 시 S3 폴더명이 됨
+                    put("sessionId", sessionId)
                 }
 
-                // 2. JSON 파일 저장 (동일한 파일명.json)
+                var jsonFile: File? = null
                 try {
-                    val jsonFile = File(context.externalCacheDir, "${file.nameWithoutExtension}.json")
-                    jsonFile.writeText(metadataJson.toString(4))
-                    Log.d("SyncLab_Metadata", "메타데이터 저장 성공: ${jsonFile.absolutePath}")
+                    val tempJson = File(context.externalCacheDir, "${file.nameWithoutExtension}.json")
+                    tempJson.writeText(metadataJson.toString(4))
+                    jsonFile = tempJson
                 } catch (e: Exception) {
                     Log.e("SyncLab_Error", "JSON 저장 실패", e)
                 }
 
-                // 3. 업로드 화면으로 단순 이동
-                // 💡 파일 경로는 인자로 보내지 않고, UploadScreen에서 최신 파일을 찾도록 함
+                if (jsonFile != null) {
+                    val uploadData = workDataOf(
+                        "video_path" to file.absolutePath,
+                        "json_path" to jsonFile.absolutePath
+                    )
+
+                    // [수정 포인트 1] 제약 조건 설정 (네트워크 연결)
+                    val constraints = Constraints.Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build()
+
+                    // [수정 포인트 2] MIN_BACKOFF_MILLIS 참조 및 태그 추가
+                    val uploadWorkRequest = OneTimeWorkRequestBuilder<VideoUploadWorker>()
+                        .addTag("VideoUpload") // 중요: UploadScreen에서 이 태그로 진행률을 찾음
+                        .setConstraints(constraints)
+                        .setInputData(uploadData)
+                        .setBackoffCriteria(
+                            BackoffPolicy.EXPONENTIAL,
+                            WorkRequest.MIN_BACKOFF_MILLIS, // 클래스 이름 명시 필요
+                            TimeUnit.MILLISECONDS
+                        )
+                        .build()
+
+                    WorkManager.getInstance(context).enqueueUniqueWork(
+                        "upload_${file.name}",
+                        ExistingWorkPolicy.REPLACE,
+                        uploadWorkRequest
+                    )
+                }
+
                 navController.navigate(Screen.Upload.route) {
                     popUpTo(Screen.Record.route) { inclusive = true }
                     launchSingleTop = true
@@ -72,7 +101,7 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
             }
         )
 
-        // 상단 현재 세션 표시
+        // 세션 정보 및 녹화 컨트롤러 (기존과 동일)
         Text(
             text = "세션: $sessionId",
             color = Color.White,
@@ -80,7 +109,6 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
             style = MaterialTheme.typography.titleMedium
         )
 
-        // 녹화 컨트롤러
         Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)) {
             Button(
                 onClick = {

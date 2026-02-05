@@ -9,6 +9,11 @@ android {
     namespace = "com.tukorea.synclab_mobile"
     compileSdk = 35
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true // Robolectric이 리소스를 사용할 수 있게 설정
+        }
+    }
     packaging {
         jniLibs {
             // JNI 라이브러리를 16KB 페이지 경계에 맞게 정렬하여 빌드
@@ -70,6 +75,7 @@ android {
 dependencies {
     implementation(libs.androidx.navigation.fragment)
     implementation(libs.firebase.appdistribution.gradle)
+    implementation(libs.core.ktx)
     // 1. 영상 촬영 (Google 권장 CameraX 라이브러리)
     val camerax_version = "1.3.0"
     implementation("androidx.camera:camera-core:$camerax_version")
@@ -117,6 +123,7 @@ dependencies {
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
     implementation(libs.androidx.material3)
+    implementation("io.coil-kt:coil-compose:2.5.0")
 
     // 테스트 관련
     testImplementation(libs.junit)
@@ -126,6 +133,7 @@ dependencies {
     androidTestImplementation(libs.androidx.ui.test.junit4)
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
+    testImplementation("org.robolectric:robolectric:4.10.3")
     dependencies {
         testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0") // 네트워크 테스트용
         testImplementation("com.google.code.gson:gson:2.10.1")        // JSON 테스트용
@@ -134,6 +142,10 @@ dependencies {
         testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0")
         testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.1")
     }
+
+    //기타 기능
+    implementation("androidx.datastore:datastore-preferences:1.1.1")
+    implementation("androidx.work:work-runtime-ktx:2.9.0")
 
     implementation(platform("androidx.compose:compose-bom:2024.10.00")) // 안정화된 버전 묶음
     implementation("androidx.compose.ui:ui")

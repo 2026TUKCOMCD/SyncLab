@@ -19,7 +19,7 @@ class UploadRepository {
     suspend fun uploadVideoToS3(
         videoFile: File,
         metadata: VideoMetadata,
-        onProgress: (Float) -> Unit
+        onProgress: (Float) -> Unit = {}
     ): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
