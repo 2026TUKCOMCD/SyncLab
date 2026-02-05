@@ -76,7 +76,7 @@ def login(user_data: Userlogin, db = Depends(get_db)):
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="비밀번호가 일치하지 않습니다."
                 )
-        sql_check_session_id = "SELECT session_session_id FROM user_session WHERE user_user_id = %s"
+        sql_check_session_id = "SELECT session_session_id FROM user_has_session WHERE user_user_id = %s"
         cursor.execute(sql_check_session_id, (existing_user['user_id'],))
         existing_user_session = cursor.fetchone()
 

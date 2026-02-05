@@ -5,8 +5,10 @@
 import jwt
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.database.connection import get_db
+from app.models.schemas import ClipData, SavedEditRequest
 from fastapi.security import OAuth2PasswordBearer # HTTP 헤더에서 토큰을 추출하고 검증하는 보안 도구
 from app.routers.web_auth import ALGORITHM, SECRET_KEY # 로그인에서 사용했던 토큰과 알고리즘 HS256
+import json
 
 print(f"비디오 파일 키: {SECRET_KEY}") # 서버 로그 확인
 router = APIRouter(prefix="/api/web")
@@ -23,6 +25,7 @@ def get_current_session_id(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
     
 
+# 사용자 session_id에 해당하는 비디오 출력 처리
 @router.get("/list")
 def get_video_list(session_id: int = Depends(get_current_session_id), db = Depends(get_db)):
 
@@ -36,7 +39,7 @@ def get_video_list(session_id: int = Depends(get_current_session_id), db = Depen
         cursor.execute(sql, (session_id, ))
         result = cursor.fetchall()
 
-        base_url = "https://synclab-480p-mp4.s3.ap-northeast-2.amazonaws.com/"
+        base_url = "https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/"
 
         video_list = []
         for index, row in enumerate(result): # enumerate 함수는 인덱스와 원소로 이루어진 튜플을 반환해주는 내장 함수
@@ -53,3 +56,18 @@ def get_video_list(session_id: int = Depends(get_current_session_id), db = Depen
         raise HTTPException(status_code=500, detail="서버 에러 발생")
     finally:
         cursor.close()
+
+# 사용자가 프로젝트 생성 버튼 클릭 시 편집정보(EDL) 전송 처리
+@router.post("/save_edit_data")
+def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
+    json_edit_data = json.dumps([clip.dict() for clip in request.edit_data])
+
+    cursor = db.cursor(dictionary=True)
+    try:
+        sql = "insert into edit (edit_data, session_session_id) values (%s, %s) ON DUPLICATE KEY UPDATE edit_data = %s"
+        cursor.execute(sql, (json_edit_data, request.session_id, json_edit_data))
+
+        db.commit()
+    except Exception as e:
+        print(f"Database Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

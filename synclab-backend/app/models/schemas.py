@@ -186,3 +186,21 @@ class ProxyRequest(BaseModel):
     video_id: int
     target_resolution: str = "1280x720"
     crf: int = Field(default=23, ge=0, le=51)
+
+# ============================================
+# 편집 관련 (웹)
+# ============================================
+
+# 클립 한개 데이터
+class ClipData(BaseModel):
+    sequence: int
+    video_url: str
+    start_seek: float
+    end_seek: float
+    duration: float
+
+# 편집 전체 데이터
+class SavedEditRequest(BaseModel):
+    session_id: str
+    edit_data: List[ClipData]
+    

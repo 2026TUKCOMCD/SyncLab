@@ -23,8 +23,7 @@ function EditPage() {
   const animationRef = useRef(null);
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
   const [cameras, setCameras] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const colors = ['#F87171', '#60A5FA', '#34D399', '#FBBF24'];
+  const [isRendering, setIsRendering] = useState(false);
 
   // 편집화면 이동 시 로그인하 사용자의 user_session_id를 조회하여 해당 세션의 동영상 목록을 출력하는 함수
   useEffect(() => {
@@ -51,9 +50,6 @@ function EditPage() {
         if (error.response && error.response.status == 401) {
           alert("인증이 만료되었습니다. 다시 로그인해주세요.");
         }
-      }
-      finally {
-        setLoading(false);
       }
     };
     fetchVideos();
@@ -198,14 +194,14 @@ function EditPage() {
 
     if (isDraggingIn) {
       if (outPoint !== null && newTime >= outPoint) newTime = outPoint - 0.1; // 새로운 시작점은 앞선 종료점보다 앞에 올 수 없도록 제어
-      const conflictClip = savedClips.find(clip => newTime >= clip.inPoint && newTime < clip.outPoint);
-      if (conflictClip) newTime = conflictClip.outPoint; // 이미 생성되어 있는 클립과 겹칠 경우 클립의 종료점을 시작점으로 설정
+      const conflictClip = savedClips.find(clip => newTime >= clip.start_seek && newTime < clip.end_seek);
+      if (conflictClip) newTime = conflictClip.end_seek; // 이미 생성되어 있는 클립과 겹칠 경우 클립의 종료점을 시작점으로 설정
       setInPoint(newTime);
     }
     else if (isDraggingOut) {
       if (inPoint !== null && newTime <= inPoint) newTime = inPoint + 0.1; // 새로운 종료점은 시작점보다 앞에 올 수 없도록 제어
-      const conflictClip = savedClips.find(clip => newTime > clip.inPoint && newTime <= clip.outPoint);
-      if (conflictClip) newTime = conflictClip.inPoint; // 이미 생성되어 있는 클립과 겹칠 경우 클립의 종료지점을 앞선 클립의 시작지점으로 이동
+      const conflictClip = savedClips.find(clip => newTime > clip.start_seek && newTime <= clip.end_seek);
+      if (conflictClip) newTime = conflictClip.start_seek; // 이미 생성되어 있는 클립과 겹칠 경우 클립의 종료지점을 앞선 클립의 시작지점으로 이동
       setOutPoint(newTime);
     }
   };
@@ -241,23 +237,33 @@ function EditPage() {
       return;
     }
     const hasOverlap = savedClips.some(clip => {
-      if (inPoint >= clip.inPoint && inPoint < clip.outPoint) return true;
-      if (outPoint > clip.inPoint && outPoint <= clip.outPoint) return true;
-      if (inPoint <= clip.inPoint && outPoint >= clip.outPoint) return true;
+      if (inPoint >= clip.start_seek && inPoint < clip.end_seek) return true;
+      if (outPoint > clip.start_seek && outPoint <= clip.end_seek) return true;
+      if (inPoint <= clip.start_seek && outPoint >= clip.end_seek) return true;
       return false;
     });
     if (hasOverlap) {
       alert('선택한 구간이 이미 추가된 클립과 겹칩니다. 다른 구간을 선택해주세요.');
       return;
     }
+
+    const currentCamData = cameras.find(c => c.id === selectedSourceCam);
+    
     const newClip = { // 클립 정보 값 -> 편집 정보로 넘길 때 사용할 예정
       id: Date.now(),
-      cam: selectedSourceCam,
-      inPoint,
-      outPoint,
+      sequence : 0,
+      video_url : currentCamData?.videoUrl || "",
+      cam : selectedSourceCam,
+      start_seek: inPoint,
+      end_seek: outPoint,
       duration: outPoint - inPoint,
     };
-    const updatedClips = [...savedClips, newClip].sort((a, b) => a.inPoint - b.inPoint);
+    const sortedClips = [...savedClips, newClip].sort((a,b) => a.start_seek - b.start_seek); // 저장된 클립들을 시작 시점과 종료 시점으로 정렬 -> 사용자가 클립의 순서를 꼬아놔도 영상의 진행 순서대로 정렬됨
+    const updatedClips = sortedClips.map((clip,index) => ({
+      ...clip,
+      sequence: index + 1
+    }));
+    
     console.table(updatedClips);
     setSavedClips(updatedClips);
     setInPoint(outPoint); // 클립 생성 후 Out 지점을 새로운 In 지점으로 지정
@@ -277,6 +283,40 @@ function EditPage() {
 
   const totalClipDuration = savedClips.reduce((sum, clip) => sum + clip.duration, 0);
 
+  // 프로젝트 생성 
+  const handleSavedClips = async() => {
+    if (savedClips.length === 0){
+      alert("저장된 클립이 없습니다. 먼저 클립을 생성해 주세요.");
+      return;
+    }
+    setIsRendering(true);
+    const clipArrays = savedClips.map(clip => ({
+      sequence: clip.sequence,
+      video_url: clip.video_url,
+      start_seek: clip.start_seek,
+      end_seek: clip.end_seek,
+      duration: clip.duration
+    }));
+    
+    const payload = {
+      session_id: localStorage.getItem('user_session_id'),
+      edit_data: clipArrays
+    }
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await axios.post('http://localhost:8000/api/web/save_edit_data', payload, {
+        headers: {Authorization: `Bearer ${token}` }
+      });
+      alert("편집 정보가 성공적으로 저장되었습니다!");
+    }
+    catch (error){
+      console.error("저장 실패 : ", error);
+    }
+    finally {
+      setIsRendering(false);
+    }
+  };
+
   /* 화면 구성 부분 */
   return (
     <div className="edit-page-container">
@@ -289,7 +329,7 @@ function EditPage() {
           <div className="header-info-text">
             총 클립: {savedClips.length}개 | 총 길이: {formatTime(totalClipDuration)}
           </div>
-          <button className="btn-base btn-primary">
+          <button className="btn-base btn-primary" onClick={handleSavedClips}>
             <Save size={18} />
             프로젝트 저장
           </button>
@@ -558,8 +598,8 @@ function EditPage() {
                       key={clip.id}
                       className="clip-region"
                       style={{
-                        left: `${(clip.inPoint / duration) * 100}%`,
-                        width: `${((clip.outPoint - clip.inPoint) / duration) * 100}%`,
+                        left: `${(clip.start_seek / duration) * 100}%`,
+                        width: `${((clip.end_seek - clip.start_seek) / duration) * 100}%`,
                       }}
                     >
                       {cameras[clip.cam].name}
