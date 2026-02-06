@@ -112,7 +112,7 @@ function EditPage() {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    const f = Math.floor((seconds % 1) * 30); // 30프레임임?
+    const ms = Math.floor((seconds % 1) * 60); // 30프레임임?
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${f.toString().padStart(2, '0')}`;
   };
 
@@ -317,6 +317,15 @@ function EditPage() {
     }
   };
 
+  // 1080p 영상 주소를 480p 주소로 변환
+  const getProxyUrl = (originalUrl) => {
+  if (!originalUrl) return "";
+  const proxyUrl = originalUrl
+  .replace(".mp4", "_proxy.mp4")
+  .replace("1080p", "480p")
+
+  return proxyUrl;
+};
   /* 화면 구성 부분 */
   return (
     <div className="edit-page-container">
@@ -380,7 +389,7 @@ function EditPage() {
                     <div className="video-thumb-wrapper" style={{ position: 'relative', width: '100%', height: '100px', backgroundColor: '#000' }}>
                       {cam.videoUrl ? (
                         <video
-                          src={`${cam.videoUrl}#t=0.1`} // 0.1초 지점 썸네일 사용
+                          src={`${getProxyUrl(cam.videoUrl)}#t=0.1`} // 0.1초 지점 썸네일 사용
                           className="video-thumb"
                           preload="metadata"
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
@@ -445,7 +454,7 @@ function EditPage() {
                       <>
                         <video
                           ref={el => { if (el) videoRefs.current[cam.id] = el; }} // videoRefs에 객체 추가
-                          src={cam.videoUrl}
+                          src={getProxyUrl(cam.videoUrl)}
                           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                           muted
                           playsInline
@@ -492,7 +501,7 @@ function EditPage() {
                   <>
                     <video
                       ref={programVideoRef}
-                      src={cameras.find(c => c.id === selectedSourceCam)?.videoUrl}
+                      src={getProxyUrl(cameras.find(c => c.id === selectedSourceCam)?.videoUrl)}
                       className="program-video"
                       playsInline
                     />
