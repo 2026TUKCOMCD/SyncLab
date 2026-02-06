@@ -57,7 +57,7 @@ def get_video_list(session_id: int = Depends(get_current_session_id), db = Depen
     finally:
         cursor.close()
 
-# 사용자가 프로젝트 생성 버튼 클릭 시 편집정보(EDL) 전송 처리
+# 사용자가 프로젝트 생성 버튼 클릭 시 편집정보(EDL) 전송 처리 (현재 DB 저장만 구현된 상태)
 @router.post("/save_edit_data")
 def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
     json_edit_data = json.dumps([clip.dict() for clip in request.edit_data])
