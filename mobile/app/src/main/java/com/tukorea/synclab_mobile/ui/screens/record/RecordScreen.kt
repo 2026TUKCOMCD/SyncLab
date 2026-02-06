@@ -18,19 +18,20 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.work.*
 import com.tukorea.synclab_mobile.Screen
+import com.tukorea.synclab_mobile.data.model.VideoMetadata
 import com.tukorea.synclab_mobile.ui.screens.home.HomeViewModel
 import com.tukorea.synclab_mobile.utils.NtpSyncManager
-import com.tukorea.synclab_mobile.ui.screens.upload.VideoUploadWorker // 경로 확인!
+import com.tukorea.synclab_mobile.ui.screens.upload.VideoUploadWorker
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.TimeUnit
-import org.json.JSONObject
 
 @Composable
 fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
+    // 현재 세션 ID 가져오기
     val sessionId = homeViewModel.currentSession?.sessionId ?: "default_session"
 
     var isRecording by remember { mutableStateOf(false) }
@@ -41,48 +42,55 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         CameraView(
             isRecording = isRecording,
+            sessionId = sessionId, // CameraView에 세션 ID 전달
             onRecordingStarted = { recording ->
                 currentRecording = recording
             },
             onRecordingFinished = { file ->
-                val duration = (absoluteEndTime - absoluteStartTime) / 1000.0
-                val metadataJson = JSONObject().apply {
-                    put("absoluteStartTime", absoluteStartTime)
-                    put("absoluteEndTime", absoluteEndTime)
-                    put("duration", String.format("%.3f", duration).toDouble())
-                    put("fileName", file.name)
-                    put("videoName", file.name)
-                    put("sessionId", sessionId)
-                }
+                // 1. 녹화 시간 계산
+                val durationSeconds = (absoluteEndTime - absoluteStartTime) / 1000.0
+
+                // 2. [방법 1 적용] VideoMetadata 데이터 클래스 사용
+                // @SerializedName 어노테이션에 의해 자동으로 snake_case JSON이 생성됩니다.
+                val metadata = VideoMetadata(
+                    videoName = file.name,
+                    fileName = file.name, // 서버 필수 필드 (file_name)
+                    absoluteStartTime = absoluteStartTime,
+                    absoluteEndTime = absoluteEndTime,
+                    duration = String.format("%.3f", durationSeconds).toDouble(),
+                    sessionId = sessionId
+                )
 
                 var jsonFile: File? = null
                 try {
                     val tempJson = File(context.externalCacheDir, "${file.nameWithoutExtension}.json")
-                    tempJson.writeText(metadataJson.toString(4))
+                    // 3. 클래스 내 정의된 toJson() 호출
+                    tempJson.writeText(metadata.toJson())
                     jsonFile = tempJson
+                    Log.d("SyncLab_Record", "JSON 메타데이터 생성 성공: ${tempJson.absolutePath}")
                 } catch (e: Exception) {
                     Log.e("SyncLab_Error", "JSON 저장 실패", e)
                 }
 
                 if (jsonFile != null) {
+                    // 4. WorkManager 데이터 구성 (session_id 포함 필수)
                     val uploadData = workDataOf(
                         "video_path" to file.absolutePath,
-                        "json_path" to jsonFile.absolutePath
+                        "json_path" to jsonFile.absolutePath,
+                        "session_id" to sessionId
                     )
 
-                    // [수정 포인트 1] 제약 조건 설정 (네트워크 연결)
                     val constraints = Constraints.Builder()
                         .setRequiredNetworkType(NetworkType.CONNECTED)
                         .build()
 
-                    // [수정 포인트 2] MIN_BACKOFF_MILLIS 참조 및 태그 추가
                     val uploadWorkRequest = OneTimeWorkRequestBuilder<VideoUploadWorker>()
-                        .addTag("VideoUpload") // 중요: UploadScreen에서 이 태그로 진행률을 찾음
+                        .addTag("VideoUpload")
                         .setConstraints(constraints)
                         .setInputData(uploadData)
                         .setBackoffCriteria(
                             BackoffPolicy.EXPONENTIAL,
-                            WorkRequest.MIN_BACKOFF_MILLIS, // 클래스 이름 명시 필요
+                            WorkRequest.MIN_BACKOFF_MILLIS,
                             TimeUnit.MILLISECONDS
                         )
                         .build()
@@ -94,6 +102,7 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
                     )
                 }
 
+                // 업로드 화면으로 이동
                 navController.navigate(Screen.Upload.route) {
                     popUpTo(Screen.Record.route) { inclusive = true }
                     launchSingleTop = true
@@ -101,7 +110,7 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
             }
         )
 
-        // 세션 정보 및 녹화 컨트롤러 (기존과 동일)
+        // 상단 UI: 세션 정보
         Text(
             text = "세션: $sessionId",
             color = Color.White,
@@ -109,15 +118,18 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
             style = MaterialTheme.typography.titleMedium
         )
 
+        // 하단 UI: 녹화 컨트롤 버튼
         Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)) {
             Button(
                 onClick = {
                     scope.launch {
                         if (isRecording) {
+                            // 녹화 중단 시점의 NTP 시간 기록
                             absoluteEndTime = NtpSyncManager.getCurrentNtpTime()
                             currentRecording?.stop()
                             isRecording = false
                         } else {
+                            // 녹화 시작 전 시간 동기화 확인
                             NtpSyncManager.checkAndSync()
                             absoluteStartTime = NtpSyncManager.getCurrentNtpTime()
                             isRecording = true

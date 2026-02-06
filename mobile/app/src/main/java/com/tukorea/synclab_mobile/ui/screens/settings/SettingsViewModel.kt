@@ -1,116 +1,109 @@
 package com.tukorea.synclab_mobile.ui.screens.settings
 
 import android.content.Context
+import android.util.Log
+import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
-import com.tukorea.synclab_mobile.data.repository.SettingsRepository
+import com.tukorea.synclab_mobile.utils.userSettingsStore
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-// 1. UI 상태 데이터 클래스
+// UI 상태 데이터 모델
 data class SettingsUiState(
-    val isGuest: Boolean = false,
+    val isGuest: Boolean = true,
     val isWifiOnly: Boolean = true,
     val isAutoUpload: Boolean = false,
-    val uploadHistorySummary: String = "성공 0 / 실패 0",
     val cacheSize: String = "1.2GB",
-    val userName: String = "",
-    val userEmail: String = "",
-    val profileImageUrl: String = ""
+    val userName: String = "게스트",
+    val userEmail: String = "로그인이 필요합니다",
+    // [수정] 기본 이미지를 UI Avatars(2번 옵션) 경로로 변경
+    val profileImageUrl: Any = "https://ui-avatars.com/api/?name=Guest&background=EBF4FF&color=7F9CF5&bold=true"
 )
 
-// 2. ViewModel 클래스 (Repository 주입 방식)
-class SettingsViewModel(private val repository: SettingsRepository) : ViewModel() {
-
+class SettingsViewModel(private val context: Context) : ViewModel() {
     private val _uiState = MutableStateFlow(SettingsUiState())
     val uiState: StateFlow<SettingsUiState> = _uiState.asStateFlow()
 
+    private val WIFI_ONLY_KEY = booleanPreferencesKey("wifi_only")
+    private val AUTO_UPLOAD_KEY = booleanPreferencesKey("auto_upload")
+
     init {
-        observeSettings()      // Repository의 데이터를 관찰 (실시간 반영)
-        checkUserLoginStatus() // 로그인 상태 체크
+        loadSettings()
     }
 
-    // [로직 1] Repository의 Flow를 UI 상태에 바인딩 (실시간 데이터 동기화)
-    private fun observeSettings() {
+    private fun loadSettings() {
         viewModelScope.launch {
-            repository.isWifiOnlyFlow.collect { isWifi ->
-                _uiState.value = _uiState.value.copy(isWifiOnly = isWifi)
-            }
-        }
-        viewModelScope.launch {
-            repository.isAutoUploadFlow.collect { isAuto ->
-                _uiState.value = _uiState.value.copy(isAutoUpload = isAuto)
-            }
-        }
-    }
-
-    // [로직 2] 로그인 상태 및 프로필 정보 로드
-    private fun checkUserLoginStatus() {
-        viewModelScope.launch {
-            // TODO: 실제 앱에서는 AuthRepository 등을 통해 확인
-            val isUserLoggedIn = false
-
-            if (!isUserLoggedIn) {
+            // [정상 작동] utils에서 가져온 userSettingsStore 사용
+            context.userSettingsStore.data.collect { prefs ->
                 _uiState.value = _uiState.value.copy(
-                    isGuest = true,
-                    userName = "게스트",
-                    userEmail = "로그인이 필요합니다",
-                    profileImageUrl = "https://vinsign.app/resources/avatars/avatar-guest.png",
-                    uploadHistorySummary = "로그인 후 확인 가능"
+                    isWifiOnly = prefs[WIFI_ONLY_KEY] ?: true,
+                    isAutoUpload = prefs[AUTO_UPLOAD_KEY] ?: false
                 )
+            }
+        }
+    }
+
+    // [수정] SettingsScreen의 호출부(name, email)와 파라미터 이름을 일치시켰습니다.
+    fun syncUserInfo(
+        isGuestUser: Boolean,
+        userNameFromDb: String,
+        userEmailFromDb: String,
+        logoResourceId: Int
+    ) {
+        _uiState.value = _uiState.value.copy(
+            isGuest = isGuestUser,
+            userName = if (isGuestUser) "게스트" else userNameFromDb,
+            userEmail = if (isGuestUser) "로그인이 필요합니다" else userEmailFromDb,
+            profileImageUrl = if (isGuestUser) {
+                "https://ui-avatars.com/api/?name=Guest&background=EBF4FF&color=7F9CF5&bold=true"
             } else {
-                _uiState.value = _uiState.value.copy(
-                    isGuest = false,
-                    userName = "김철수",
-                    userEmail = "@chulsoo_kim",
-                    profileImageUrl = "https://vinsign.app/resources/avatars/avatar-2.png",
-                    uploadHistorySummary = "성공 24 / 실패 1"
-                )
+                logoResourceId
             }
-        }
+        )
     }
 
-    // [로직 3] Wi-Fi 설정 업데이트 (Repository에 위임)
-    fun toggleWifiOnly(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.updateWifiOnly(enabled)
-        }
-    }
-
-    // [로직 4] 자동 업로드 설정 업데이트 (Repository에 위임)
-    fun toggleAutoUpload(enabled: Boolean) {
-        viewModelScope.launch {
-            repository.updateAutoUpload(enabled)
-        }
-    }
-
-    // [로직 5] 임시 파일 및 캐시 삭제
     fun clearCache() {
         viewModelScope.launch {
-            // TODO: 실제 파일 삭제 로직 수행 (예: context.cacheDir.deleteRecursively())
-            _uiState.value = _uiState.value.copy(cacheSize = "0.0MB")
+            try {
+                context.cacheDir.deleteRecursively()
+                context.externalCacheDir?.deleteRecursively()
+                _uiState.value = _uiState.value.copy(cacheSize = "0.0MB")
+            } catch (e: Exception) {
+                Log.e("Settings", "캐시 삭제 실패")
+            }
         }
     }
 
-    // [로직 6] 로그아웃
-    fun logout(onSuccess: () -> Unit) {
+    fun logout(onComplete: () -> Unit) {
         viewModelScope.launch {
-            // TODO: 세션 삭제 로직
-            onSuccess()
+            _uiState.value = SettingsUiState()
+            onComplete()
+        }
+    }
+
+    fun toggleWifiOnly(enabled: Boolean) {
+        viewModelScope.launch {
+            context.userSettingsStore.edit { it[WIFI_ONLY_KEY] = enabled }
+        }
+    }
+
+    fun toggleAutoUpload(enabled: Boolean) {
+        viewModelScope.launch {
+            context.userSettingsStore.edit { it[AUTO_UPLOAD_KEY] = enabled }
         }
     }
 }
 
-// 3. Factory 클래스 (Repository 생성 및 주입 담당)
 class SettingsViewModelFactory(private val context: Context) : ViewModelProvider.Factory {
+    @Suppress("UNCHECKED_CAST")
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(SettingsViewModel::class.java)) {
-            val repository = SettingsRepository(context.applicationContext)
-            @Suppress("UNCHECKED_CAST")
-            return SettingsViewModel(repository) as T
+            return SettingsViewModel(context) as T
         }
         throw IllegalArgumentException("Unknown ViewModel class")
     }

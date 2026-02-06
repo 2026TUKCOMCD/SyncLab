@@ -76,6 +76,7 @@ dependencies {
     implementation(libs.androidx.navigation.fragment)
     implementation(libs.firebase.appdistribution.gradle)
     implementation(libs.core.ktx)
+
     // 1. 영상 촬영 (Google 권장 CameraX 라이브러리)
     val camerax_version = "1.3.0"
     implementation("androidx.camera:camera-core:$camerax_version")
@@ -134,6 +135,9 @@ dependencies {
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
     testImplementation("org.robolectric:robolectric:4.10.3")
+    implementation("androidx.compose.runtime:runtime-livedata:1.5.4")
+    implementation(libs.androidx.work.testing)
+
     dependencies {
         testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0") // 네트워크 테스트용
         testImplementation("com.google.code.gson:gson:2.10.1")        // JSON 테스트용

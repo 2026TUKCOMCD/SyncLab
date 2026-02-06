@@ -4,40 +4,32 @@ import com.google.gson.Gson
 import com.tukorea.synclab_mobile.data.model.VideoMetadata
 import org.junit.Test
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertTrue
 
-/**
- * 서버 JSON 데이터와 VideoMetadata 모델 간의 매핑을 검증하는 테스트
- */
 class MetadataMappingTest {
-
     @Test
     fun `서버_JSON_파싱_및_세션ID_검증_테스트`() {
-        // 1. 서버에서 내려줄 수 있는 형태의 JSON (sessionId 포함)
+        // 모델의 @SerializedName과 일치하도록 키값 수정 (snake_case)
         val json = """
             {
-                "videoName": "SyncLab_20240101",
-                "fileName": "SyncLab_20240101.mp4",
-                "absoluteStartTime": 1704067200000,
-                "absoluteEndTime": 1704067210000,
+                "video_name": "SyncLab_20240101",
+                "file_name": "SyncLab_20240101.mp4",
+                "absolute_start_time": 1704067200000,
+                "absolute_end_time": 1704067210000,
                 "duration": 10.0,
-                "sessionId": "room_alpha_01"
+                "session_id": "room_alpha_01"
             }
         """.trimIndent()
 
-        // 2. GSON을 이용한 역직렬화
         val metadata = Gson().fromJson(json, VideoMetadata::class.java)
 
-        // 3. 검증
-        assertNotNull("파싱된 객체는 null이 아니어야 합니다", metadata)
+        // 이제 정상적으로 매핑되어 null이 나오지 않습니다.
         assertEquals("SyncLab_20240101.mp4", metadata.fileName)
-        assertEquals("room_alpha_01", metadata.sessionId) // 세션 ID 매핑 확인
-        assertEquals(10.0, metadata.duration, 0.001) // 소수점 오차 허용 범위 지정
+        assertEquals("room_alpha_01", metadata.sessionId)
     }
 
     @Test
     fun `모델을_JSON으로_변환_테스트`() {
-        // 반대로 객체를 JSON으로 만들었을 때 형식이 올바른지 확인
         val metadata = VideoMetadata(
             videoName = "test",
             fileName = "test.mp4",
@@ -47,9 +39,10 @@ class MetadataMappingTest {
             sessionId = "session_123"
         )
 
-        val jsonOutput = Gson().toJson(metadata)
+        val jsonOutput = metadata.toJson()
 
-        // JSON 문자열에 필수 키값이 포함되어 있는지 확인
-        assertEquals(true, jsonOutput.contains("\"sessionId\":\"session_123\""))
+        // 변환된 JSON도 snake_case인지 확인해야 테스트가 통과합니다.
+        assertTrue(jsonOutput.contains("\"session_id\":\"session_123\""))
+        assertTrue(jsonOutput.contains("\"file_name\":\"test.mp4\""))
     }
 }

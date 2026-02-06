@@ -8,28 +8,27 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.data.model.LoginRequest
+import com.tukorea.synclab_mobile.data.model.LoginResponse
 import com.tukorea.synclab_mobile.utils.AuthManager
 import kotlinx.coroutines.launch
 
 class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
-    // 1. 토큰 관리를 위한 AuthManager (Context 필요로 인해 AndroidViewModel 사용)
     private val authManager = AuthManager(application)
 
-    // 2. UI 상태 관리 (로딩 여부)
     var isProcessing by mutableStateOf(false)
         private set
 
     /**
      * 서버 로그인 수행
+     * onSuccess 콜백이 이제 LoginResponse를 인자로 전달합니다.
      */
     fun login(
         userId: String,
         userPw: String,
-        onSuccess: () -> Unit,
+        onSuccess: (LoginResponse) -> Unit, // 👈 빈 괄호()에서 LoginResponse로 변경!
         onError: (String) -> Unit
     ) {
-        // 입력값 검증
         if (userId.isBlank() || userPw.isBlank()) {
             onError("아이디와 비밀번호를 모두 입력해주세요.")
             return
@@ -39,20 +38,20 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                // NetworkClient에 등록된 authService 호출
                 val response = NetworkClient.authService.login(LoginRequest(userId, userPw))
 
                 if (response.isSuccessful) {
                     val loginBody = response.body()
-                    if (loginBody?.status == "success") {
-                        // ✅ 핵심: 서버에서 받은 JWT 토큰을 AuthManager에 저장
+                    if (loginBody?.status == "success" && loginBody != null) {
+                        // 1. JWT 토큰 저장
                         authManager.saveToken(loginBody.accessToken)
-                        onSuccess()
+
+                        // 2. [핵심] 성공 콜백에 서버 응답 데이터를 담아서 던져줌!
+                        onSuccess(loginBody)
                     } else {
                         onError("아이디 또는 비밀번호가 올바르지 않습니다.")
                     }
                 } else {
-                    // 서버 에러 처리 (401, 500 등)
                     val errorMsg = when (response.code()) {
                         401 -> "인증에 실패했습니다. 정보를 다시 확인해주세요."
                         else -> "서버 에러가 발생했습니다. (코드: ${response.code()})"
@@ -60,7 +59,6 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     onError(errorMsg)
                 }
             } catch (e: Exception) {
-                // 네트워크 연결 실패 등 예외 처리
                 onError("서버와의 연결이 원활하지 않습니다: ${e.localizedMessage}")
             } finally {
                 isProcessing = false

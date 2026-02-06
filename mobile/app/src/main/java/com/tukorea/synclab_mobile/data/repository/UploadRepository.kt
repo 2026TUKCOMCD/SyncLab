@@ -12,38 +12,49 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 class UploadRepository {
-    private val api: VideoUploadService = NetworkClient.service
+    private val api: VideoUploadService by lazy { NetworkClient.service }
+
     private val CHUNK_SIZE = 5 * 1024 * 1024L // 5MB
     private val MAX_RETRIES = 3
 
     suspend fun uploadVideoToS3(
         videoFile: File,
         metadata: VideoMetadata,
+        sessionId: String, // 👈 Worker에서 넘겨준 세션 ID 파라미터
         onProgress: (Float) -> Unit = {}
     ): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
+                // 1. 사전 검증 단계
                 if (!videoFile.exists()) {
-                    return@withContext Result.failure(Exception("파일을 찾을 수 없습니다: ${videoFile.absolutePath}"))
+                    Log.e("UploadRepository", "❌ 파일을 찾을 수 없음: ${videoFile.absolutePath}")
+                    return@withContext Result.failure(Exception("파일 없음"))
                 }
 
-                // [준비] 세션 ID 및 파트 개수 계산
-                val sessionId = metadata.sessionId ?: return@withContext Result.failure(Exception("세션 ID가 누락되었습니다."))
+                // 🔥 [수정] val sessionId = metadata.sessionId 줄을 삭제했습니다.
+                // 파라미터로 받은 sessionId를 직접 사용하며, null/empty 체크만 수행합니다.
+                if (sessionId.isNullOrEmpty()) {
+                    Log.e("UploadRepository", "❌ 세션 ID가 누락되었습니다. (파라미터 확인 필요)")
+                    return@withContext Result.failure(Exception("세션 ID 누락"))
+                }
+
                 val chunkCount = Math.ceil(videoFile.length().toDouble() / CHUNK_SIZE).toInt()
+                Log.d("UploadRepository", "🚀 S3 업로드 시퀀스 시작: SID=$sessionId, File=${videoFile.name} (파트: $chunkCount)")
 
-                Log.d("UploadRepository", "🚀 업로드 시작: ${videoFile.name} (세션: $sessionId, 파트: $chunkCount)")
-
-                // [1단계] 업로드 초기화 (S3 UploadId 및 Presigned URLs 발급)
-                // 인터페이스의 @Query 설정에 따라 URL 파라미터로 전달됩니다.
-                val initResponse = api.initMultipartUpload(
-                    sessionId = sessionId,
-                    filename = videoFile.name,
-                    partCount = chunkCount
-                )
+                // [1단계] 업로드 초기화
+                val initResponse = try {
+                    api.initMultipartUpload(
+                        sessionId = sessionId, // 👈 파라미터 sessionId 사용
+                        filename = videoFile.name,
+                        partCount = chunkCount
+                    )
+                } catch (e: Exception) {
+                    Log.e("UploadRepository", "❌ initMultipartUpload API 호출 실패", e)
+                    throw e
+                }
 
                 val uploadId = initResponse.uploadId
                 val presignedUrls = initResponse.presignedUrls
-                // 서버가 준 s3Key가 없으면 "세션ID/파일명" 구조로 직접 생성
                 val s3Key = initResponse.s3Key ?: "$sessionId/${videoFile.name}"
 
                 val etags = mutableListOf<String>()
@@ -67,46 +78,42 @@ class UploadRepository {
                         if (successEtag != null) break
 
                         retryCount++
-                        Log.w("UploadRepository", "⚠️ ${i + 1}번 조각 재시도 ($retryCount/$MAX_RETRIES)")
+                        Log.w("UploadRepository", "⚠️ Part ${i+1} 재시도 중... ($retryCount/$MAX_RETRIES)")
                         delay(2000)
                     }
 
                     if (successEtag == null) {
-                        return@withContext Result.failure(Exception("${i + 1}번 조각 업로드 실패 (최대 재시도 초과)"))
+                        throw Exception("${i + 1}번 조각 업로드 최종 실패")
                     }
 
                     etags.add(successEtag)
-
-                    // 메인 스레드에서 프로그레스 업데이트
-                    withContext(Dispatchers.Main) {
-                        onProgress((i + 1).toFloat() / chunkCount)
-                    }
+                    onProgress((i + 1).toFloat() / chunkCount)
                 }
 
-                // [3단계] 서버 완료 보고 및 DB 등록
+                // [3단계] 서버 완료 보고
                 val completeRequest = CompleteUploadRequest(
-                    sessionId = sessionId,
+                    sessionId = sessionId, // 👈 파라미터 sessionId 사용
                     uploadId = uploadId,
-                    videoName = s3Key, // S3 경로 (session_id/filename.mp4)
+                    videoName = s3Key,
                     etags = etags,
+                    // metadata 내부의 sessionId도 파라미터 값으로 강제 업데이트해서 일관성 유지
                     metadata = metadata.copy(sessionId = sessionId)
                 )
 
-                Log.d("UploadRepository", "🔗 서버에 업로드 완료 보고 전송 중...")
-
+                Log.d("UploadRepository", "🔗 S3 전송 완료, 서버에 최종 등록 중... (SID: $sessionId)")
                 val response = api.completeAndRegister(completeRequest)
 
                 if (response.isSuccessful) {
-                    Log.d("UploadRepository", "✅ 모든 과정 성공적으로 완료")
+                    Log.d("UploadRepository", "✅ 모든 과정 성공적으로 종료")
                     Result.success(Unit)
                 } else {
                     val errorBody = response.errorBody()?.string()
-                    Log.e("UploadRepository", "❌ 완료 보고 실패: $errorBody")
+                    Log.e("UploadRepository", "❌ 서버 등록 실패: $errorBody")
                     Result.failure(Exception("서버 등록 실패: $errorBody"))
                 }
 
             } catch (e: Exception) {
-                Log.e("UploadRepository", "❌ 예외 발생: ${e.message}")
+                Log.e("UploadRepository", "🔥 예외 발생", e)
                 Result.failure(e)
             }
         }

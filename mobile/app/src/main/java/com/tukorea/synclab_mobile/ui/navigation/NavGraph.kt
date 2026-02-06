@@ -17,6 +17,7 @@ import com.tukorea.synclab_mobile.ui.components.PlaceholderScreen
 import com.tukorea.synclab_mobile.ui.components.PermissionRequestScreen
 import com.tukorea.synclab_mobile.ui.screens.home.HomeScreen
 import com.tukorea.synclab_mobile.ui.screens.home.HomeViewModel
+import com.tukorea.synclab_mobile.ui.screens.settings.SettingsScreen
 
 @Composable
 fun NavGraph(
@@ -24,34 +25,30 @@ fun NavGraph(
     isPermissionGranted: Boolean,
     onPermissionRequest: () -> Unit
 ) {
-    // 앱 전체에서 공유되는 세션 데이터 관리자
+    // 모든 화면에서 공유할 ViewModel
     val sharedHomeViewModel: HomeViewModel = viewModel()
     val context = LocalContext.current
-    var backPressedTime by remember { mutableLongStateOf(0L) }
 
     NavHost(
         navController = navController,
         startDestination = Screen.Login.route
     ) {
-        // NavGraph.kt 내부의 LoginScreen composable 부분 수정
         // 1. 로그인 화면
         composable(route = Screen.Login.route) {
             LoginScreen(
-                onLoginSuccess = {
-                    sharedHomeViewModel.isGuest = false // 회원 로그인
-                    navController.navigate(Screen.Home.route) {
-                        popUpTo(Screen.Login.route) { inclusive = true }
-                        launchSingleTop = true
-                    }
-                },
-                onGuestLogin = { inviteCode ->
-                    // ✅ [중요] 사용자가 입력한 6자리 코드로 세션 참가 로직 실행
-                    sharedHomeViewModel.isGuest = true
-                    sharedHomeViewModel.joinSession(inviteCode)
+                onLoginSuccess = { loginResponse -> // 👈 [수정] 서버 응답(LoginResponse)을 받음
+                    // ✅ [핵심] 뷰모델에 유저 정보와 세션 ID를 즉시 업데이트
+                    sharedHomeViewModel.updateUserInfo(loginResponse)
 
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
-                        launchSingleTop = true
+                    }
+                },
+                onGuestLogin = { inviteCode ->
+                    sharedHomeViewModel.isGuest = true
+                    sharedHomeViewModel.joinSession(inviteCode)
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
                     }
                 }
             )
@@ -59,19 +56,10 @@ fun NavGraph(
 
         // 2. 홈 화면
         composable(route = Screen.Home.route) {
-            BackHandler {
-                val currentTime = System.currentTimeMillis()
-                if (currentTime - backPressedTime < 2000) {
-                    (context as? ComponentActivity)?.finish()
-                } else {
-                    backPressedTime = currentTime
-                    Toast.makeText(context, "한 번 더 누르면 종료됩니다.", Toast.LENGTH_SHORT).show()
-                }
-            }
             HomeScreen(viewModel = sharedHomeViewModel)
         }
 
-        // --- 공통: 뒤로가기 시 홈으로 이동 ---
+        // 공통 네비게이션 헬퍼
         val navigateToHome = {
             navController.navigate(Screen.Home.route) {
                 popUpTo(Screen.Home.route) { inclusive = true }
@@ -79,32 +67,44 @@ fun NavGraph(
             }
         }
 
-        // 3. 녹화 화면 (ViewModel 전달)
+        // 3. 녹화 화면
         composable(route = Screen.Record.route) {
             BackHandler { navigateToHome() }
             if (isPermissionGranted) {
-                RecordScreen(
-                    navController = navController,
-                    homeViewModel = sharedHomeViewModel // ✅ 전달 완료
-                )
+                RecordScreen(navController = navController, homeViewModel = sharedHomeViewModel)
             } else {
                 PermissionRequestScreen(onRequest = onPermissionRequest)
             }
         }
 
-        // 4. 업로드 화면 (ViewModel 전달)
+        // 4. 업로드 화면
         composable(route = Screen.Upload.route) {
             BackHandler { navigateToHome() }
-            UploadScreen(
-                navController = navController,
-                homeViewModel = sharedHomeViewModel // ✅ 전달 완료
-            )
+            UploadScreen(navController = navController, homeViewModel = sharedHomeViewModel)
         }
 
         // 5. 설정 화면
         composable(route = Screen.Settings.route) {
             BackHandler { navigateToHome() }
-            PlaceholderScreen("환경 설정")
+
+            SettingsScreen(
+                onBackClick = { navigateToHome() },
+                onLogoutSuccess = {
+                    sharedHomeViewModel.performLogout() // ✅ clearSession 대신 통합 로그아웃 호출
+
+                    navController.navigate(Screen.Login.route) {
+                        popUpTo(0) { inclusive = true }
+                        launchSingleTop = true
+                    }
+                    Toast.makeText(context, "로그아웃 되었습니다.", Toast.LENGTH_SHORT).show()
+                },
+                onLoginClick = {
+                    navController.navigate(Screen.Login.route) {
+                        launchSingleTop = true
+                    }
+                },
+                homeViewModel = sharedHomeViewModel
+            )
         }
     }
 }

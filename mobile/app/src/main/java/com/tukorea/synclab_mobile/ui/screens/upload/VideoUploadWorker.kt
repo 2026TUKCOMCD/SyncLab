@@ -6,11 +6,9 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.google.gson.Gson
+import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.data.model.VideoMetadata
-import com.tukorea.synclab_mobile.data.repository.SettingsRepository
 import com.tukorea.synclab_mobile.data.repository.UploadRepository
-import com.tukorea.synclab_mobile.utils.NetworkMonitor
-import kotlinx.coroutines.flow.first
 import java.io.File
 
 class VideoUploadWorker(
@@ -18,49 +16,59 @@ class VideoUploadWorker(
     workerParams: WorkerParameters
 ) : CoroutineWorker(context, workerParams) {
 
-    private val uploadRepository = UploadRepository()
-    private val settingsRepository = SettingsRepository(context)
-    private val networkMonitor = NetworkMonitor(context)
+    private lateinit var uploadRepository: UploadRepository
 
     override suspend fun doWork(): Result {
+        // 1. 초기화
+        NetworkClient.init(applicationContext)
+        uploadRepository = UploadRepository()
+
+        // 2. InputData로부터 값 추출
         val videoPath = inputData.getString("video_path") ?: return Result.failure()
         val jsonPath = inputData.getString("json_path") ?: return Result.failure()
+        val sessionId = inputData.getString("session_id") // 세션 ID 수신
+
+        // 세션 ID 검증
+        if (sessionId.isNullOrBlank()) {
+            Log.e("VideoUploadWorker", "❌ 세션 ID가 누락되어 업로드를 진행할 수 없습니다.")
+            return Result.failure()
+        }
 
         val videoFile = File(videoPath)
         val jsonFile = File(jsonPath)
 
-        // 1. 파일 확인
-        if (!videoFile.exists() || !jsonFile.exists()) return Result.failure()
-
-        // 2. 설정 및 네트워크 체크 (Wi-Fi 전용 설정 시)
-        val isWifiOnly = settingsRepository.isWifiOnlyFlow.first()
-        val isWifiNow = networkMonitor.isWifiConnected.first()
-
-        if (isWifiOnly && !isWifiNow) {
-            // Wi-Fi가 아니면 나중에 다시 시도하도록 예약
-            return Result.retry()
+        if (!videoFile.exists() || !jsonFile.exists()) {
+            Log.e("VideoUploadWorker", "파일 없음: $videoPath")
+            return Result.failure()
         }
 
         return try {
-            // 3. JSON 메타데이터 파싱
-            val metadata = Gson().fromJson(jsonFile.readText(), VideoMetadata::class.java)
+            val metadataString = jsonFile.readText()
+            val metadata = Gson().fromJson(metadataString, VideoMetadata::class.java)
 
-            // 4. 리포지토리 호출하여 실제 업로드 수행
-            val result = uploadRepository.uploadVideoToS3(videoFile, metadata) { progress ->
-                // WorkManager 내부에 진행률 저장 (UI에서 관찰 가능)
-                setProgressAsync(workDataOf("progress" to progress))
+            Log.d("VideoUploadWorker", "🚀 업로드 시작 - SID: $sessionId, File: ${videoFile.name}")
+
+            // ✅ Repository의 파라미터명(videoFile)과 순서에 맞춰서 호출
+            val result = uploadRepository.uploadVideoToS3(
+                videoFile = videoFile,   // 'file'이 아니라 'videoFile'이어야 함
+                metadata = metadata,
+                sessionId = sessionId
+            ) { progress ->
+                if (!isStopped) {
+                    setProgressAsync(workDataOf("progress" to progress))
+                }
             }
 
             if (result.isSuccess) {
-                // 성공 시 임시 파일 삭제 (필요 시)
-                // videoFile.delete()
-                // jsonFile.delete()
+                Log.d("VideoUploadWorker", "✅ 업로드 성공")
                 Result.success()
             } else {
+                val errorMsg = result.exceptionOrNull()?.message ?: "Unknown Error"
+                Log.e("VideoUploadWorker", "❌ 업로드 실패 원인: $errorMsg")
                 Result.retry()
             }
         } catch (e: Exception) {
-            Log.e("VideoUploadWorker", "Upload failed", e)
+            Log.e("VideoUploadWorker", "🔥 예외 발생: ${e.message}", e)
             Result.retry()
         }
     }

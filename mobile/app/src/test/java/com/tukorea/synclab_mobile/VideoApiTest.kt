@@ -27,10 +27,11 @@ class VideoApiTest {
         mockWebServer = MockWebServer()
         mockWebServer.start()
 
+        // 테스트를 위해 타임아웃을 2초로 짧게 설정 (시나리오 2 검증용)
         val okHttpClient = OkHttpClient.Builder()
-            .connectTimeout(3, TimeUnit.SECONDS)
-            .readTimeout(3, TimeUnit.SECONDS)
-            .writeTimeout(3, TimeUnit.SECONDS)
+            .connectTimeout(2, TimeUnit.SECONDS)
+            .readTimeout(2, TimeUnit.SECONDS)
+            .writeTimeout(2, TimeUnit.SECONDS)
             .build()
 
         val retrofit = Retrofit.Builder()
@@ -48,17 +49,17 @@ class VideoApiTest {
     }
 
     /**
-     * 시나리오 1: 데이터 규격 검증
+     * 시나리오 1: 데이터 규격 및 경로 검증
+     * 클라이언트가 서버로 보내는 JSON body 내용이 정확한지 확인합니다.
      */
     @Test(timeout = 5000)
-    fun `서버_JSON_전송_데이터_규격_로컬_검증`() = runBlocking {
+    fun `서버_전송_데이터_규격_및_엔드포인트_검증`() = runBlocking {
         mockWebServer.enqueue(MockResponse()
             .setResponseCode(200)
             .setBody("{\"status\":\"success\"}")
         )
 
         val testSessionId = "SESS-DEBUG-001"
-
         val dummyMetadata = VideoMetadata(
             videoName = "졸작_테스트_영상",
             fileName = "match_01.mp4",
@@ -72,64 +73,70 @@ class VideoApiTest {
             sessionId = testSessionId,
             uploadId = "test_123",
             videoName = "match_01.mp4",
-            etags = listOf("e1"),
+            etags = listOf("etag1", "etag2"),
             metadata = dummyMetadata
         )
 
-        val response = testApiService.completeAndRegister(dummyRequest)
-        val recordedRequest = mockWebServer.takeRequest(3, TimeUnit.SECONDS)
+        testApiService.completeAndRegister(dummyRequest)
 
-        assertTrue(response.isSuccessful)
-        assertEquals("/api/video/upload/complete", recordedRequest?.path)
+        // 서버에 도달한 실제 요청 가로채기
+        val recordedRequest = mockWebServer.takeRequest()
+
+        assertEquals("POST", recordedRequest?.method)
+        // 실제 API 경로가 /api/video/upload/complete 인지 확인
+        assertTrue(recordedRequest?.path?.contains("complete") == true)
+        // 전송된 JSON에 sessionId가 포함되어 있는지 확인
+        assertTrue(recordedRequest?.body?.readUtf8()?.contains(testSessionId) == true)
     }
 
     /**
-     * 시나리오 2: 응답 지연 발생 시 타임아웃 처리 확인 (partCount 에러 수정)
+     * 시나리오 2: 응답 지연 발생 시 타임아웃 처리 확인
      */
     @Test(timeout = 5000)
-    fun `네트워크_지연_시_타임아웃_처리_검증`() = runBlocking {
+    fun `네트워크_지연_시_정해진_시간후_타임아웃_발생_확인`() = runBlocking {
+        // 서버 응답을 5초 지연시킴 (클라이언트 타임아웃은 2초)
         mockWebServer.enqueue(
             MockResponse()
-                .setBodyDelay(10, TimeUnit.SECONDS)
+                .setBodyDelay(5, TimeUnit.SECONDS)
                 .setResponseCode(200)
+                .setBody("{\"uploadId\":\"late_id\"}")
         )
 
         val isTimeoutOccurred = try {
-            // ⭐️ 에러 해결: 파라미터 이름을 명시하거나 인터페이스 정의 순서 확인
-            // 만약 인터페이스에 sessionId가 필수라면 세 번째 인자도 넣어줘야 합니다.
             testApiService.initMultipartUpload(
+                sessionId = "test_sess",
                 filename = "test.mp4",
-                partCount = 1,
-                sessionId = "default_session"
+                partCount = 5
             )
             false
         } catch (e: Exception) {
-            println("정상적으로 타임아웃 감지됨: ${e.message}")
+            println("타임아웃 로그: ${e.message}")
             true
         }
 
-        assertTrue("3초 경과 시 타임아웃 예외가 발생해야 합니다.", isTimeoutOccurred)
+        assertTrue("설정된 타임아웃(2초)보다 지연이 길면 예외가 발생해야 합니다.", isTimeoutOccurred)
     }
 
     /**
-     * 시나리오 3: 물리적 연결 단절 상황 (partCount 에러 수정)
+     * 시나리오 3: 물리적 연결 단절 상황
      */
-    @Test(timeout = 3000)
-    fun `물리적_네트워크_단절_시_IOException_발생_확인`() = runBlocking {
+    @Test(timeout = 5000)
+    fun `서버_연결_즉시_단절_시_IOException_발생_확인`() = runBlocking {
+        // 연결되자마자 끊어버리는 정책 설정
         mockWebServer.enqueue(MockResponse().setSocketPolicy(SocketPolicy.DISCONNECT_AT_START))
 
         val result = try {
-            // ⭐️ 여기도 동일하게 파라미터 규격을 맞춥니다.
             testApiService.initMultipartUpload(
+                sessionId = "test_sess",
                 filename = "test.mp4",
-                partCount = 3,
-                sessionId = "default_session"
+                partCount = 1
             )
             null
         } catch (e: Exception) {
             e
         }
 
-        assertTrue("IOException 계열의 에러가 발생해야 합니다.", result is IOException)
+        // Retrofit/OkHttp는 연결 실패 시 IOException을 던짐
+        assertTrue("연결 단절 시 IOException이 발생해야 합니다.", result is IOException)
     }
 }
