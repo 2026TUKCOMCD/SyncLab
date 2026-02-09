@@ -357,16 +357,21 @@ body {
 .main-content {
   flex: 1;
   display: flex;
+  height: calc(100vh -75px);
   overflow: hidden;
 }
 
 /* 좌측 사이드바 */
 .sidebar {
-  width: 200px;
+  width: 250px;
   background-color: var(--bg-panel);
   border-right: 1px solid var(--border-color);
   padding: 16px;
+
+  height: 100%;
   overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .section-title {
@@ -427,11 +432,111 @@ body {
   font-weight: bold;
 }
 
+/* --- 세션 선택 섹션 스타일 --- */
+.session-select-wrapper {
+  margin-bottom: 24px;
+  padding: 12px;
+  background-color: #f8fafc;
+  border-radius: 8px;
+  border: 1px solid var(--border-color);
+}
+
+.session-value {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-main);
+  word-break: break-all;
+  /* ID가 길면 자동 줄바꿈하여 모두 표시 */
+  line-height: 1.4;
+}
+
+.session-info-box {
+  display: flex;
+  flex-direction: column;
+  /* 세로 구조로 변경 */
+  gap: 4px;
+  margin-bottom: 12px;
+  padding: 8px;
+  background: white;
+  border-left: 4px solid var(--primary-blue);
+  /* 포인트 라인 */
+  border-radius: 4px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.session-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+}
+
+.session-select-label {
+  display: block;
+  font-size: 14px;
+  font-weight: 600;
+  color: #4b5563;
+  margin-bottom: 8px;
+}
+
+.session-select-dropdown {
+  width: 100%;
+  padding: 8px;
+  font-size: 13px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  background-color: white;
+  color: #374151;
+  cursor: pointer;
+}
+
+.session-select-dropdown:focus {
+  outline: none;
+  border-color: var(--primary-blue);
+}
+
+.session-select {
+  width: 100%;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-main);
+  background-color: white;
+  border: 2px solid var(--border-color);
+  border-radius: 8px;
+  outline: none;
+  cursor: pointer;
+  appearance: none;
+  /* 브라우저 기본 화살표 제거 */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%233552a0' %3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  background-size: 16px;
+  transition: all 0.2s ease;
+}
+
+.session-select:focus {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+}
+
+.session-select:hover {
+  border-color: var(--primary-blue);
+  background-color: #f9fafb;
+}
+
+/* 세션 옵션 내 텍스트 스타일 */
+.session-select option {
+  padding: 10px;
+  color: #333;
+}
+
 /* --- 멀티뷰 & 프로그램 모니터 영역 --- */
 .workspace-area {
   flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .monitor-section {
@@ -439,6 +544,7 @@ body {
   display: flex;
   padding: 16px;
   gap: 16px;
+  overflow: hidden;
 }
 
 /* 멀티뷰 그리드 */

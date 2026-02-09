@@ -72,10 +72,10 @@ async def create_proxy_video(original_key: str, video_id: int):
             cursor = conn.cursor()
             sql_update = """
                 UPDATE video 
-                SET upload_status = 'COMPLETED', s3_url = %s
+                SET upload_status = 'COMPLETED'
                 WHERE video_id = %s
             """
-            cursor.execute(sql_update, (proxy_url, video_id))
+            cursor.execute(sql_update, (video_id,))
             conn.commit()
             cursor.close()
 
@@ -144,12 +144,12 @@ async def complete_upload(request: CompleteUploadRequest, background_tasks: Back
             cursor = conn.cursor()
             sql = """
                 INSERT INTO video (
-                    session_session_id, s3_url, video_name,
+                    session_session_id, video_name,
                     upload_status, absolute_start_time, absolute_end_time, duration
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s)
+                ) VALUES (%s, %s, %s, %s, %s, %s)
             """
             cursor.execute(sql, (
-                session_id, original_url, request.video_name,
+                session_id, request.video_name,
                 'PROCESSING', 
                 request.metadata.absolute_start_time,
                 request.metadata.absolute_end_time,
@@ -193,7 +193,7 @@ async def list_session_videos(session_id: str):
             cursor = conn.cursor(dictionary=True)
             sql = """
                 SELECT 
-                    video_id, video_name, s3_url, upload_status,
+                    video_id, video_name, upload_status,
                     duration, absolute_start_time, absolute_end_time
                 FROM video
                 WHERE session_session_id = %s

@@ -16,9 +16,6 @@ if env_path.exists():
 else:
     # 파일이 없을 경우를 대비해 기본 load_dotenv() 실행 혹은 경고
     load_dotenv() 
-    print(f"⚠️ 통합 .env를 찾지 못해 기본 경로에서 로드를 시도합니다.")
-    
-load_dotenv()
 
 # FastAPI 앱 생성
 app = FastAPI(
@@ -26,6 +23,14 @@ app = FastAPI(
     description="다각도 영상 촬영 및 편집 시스템",
     version="1.0.0"
 )
+# ✅ 정적 파일 서빙 설정 추가 (가장 중요!)
+# 서비스 로직에서 exports 폴더를 사용하므로 여기서 연결해줍니다.
+EXPORT_DIR = "exports"
+if not os.path.exists(EXPORT_DIR):
+    os.makedirs(EXPORT_DIR)
+
+# 브라우저에서 http://localhost:3000/videos/파일명.mp4 로 접근 가능하게 함 (웹에서 영상 재생 가능)
+app.mount("/videos", StaticFiles(directory=EXPORT_DIR), name="videos")
 
 # CORS 설정
 app.add_middleware(
@@ -35,7 +40,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # 라우터 등록
 app.include_router(web_video.router)
