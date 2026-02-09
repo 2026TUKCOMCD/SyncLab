@@ -11,7 +11,7 @@ from app.database.connection import *
 router = APIRouter(prefix="/api/web") # /api/web 로 설정해야 함
 
 # 토큰 생성 함수
-SECRET_KEY = "my_super_secret_key_synclab" 
+SECRET_KEY = os.getenv("SECRET_KEY")
 ALGORITHM = "HS256" # 암호화 방식 - 해시함수
 ACCESS_TOKEN_EXPIRE_MINUTES = 600 # 토큰 유효시간 10시간
 
@@ -27,7 +27,7 @@ def create_access_token(data: dict): # dictionary 클래스 사용
 # 회원가입 실행 함수
 @router.post("/signup")
 def signup(user_data: Usercreate, db = Depends(get_db)):
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor(dictionary=True, buffered = True)
     
     # 회원가입 시도 시 동일한 아이디 존재하는지 조회
     try:
@@ -58,7 +58,7 @@ def signup(user_data: Usercreate, db = Depends(get_db)):
 # 로그인 실행 함수
 @router.post("/login")
 def login(user_data: Userlogin, db = Depends(get_db)):
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor(dictionary=True, buffered=True)
 
     # 로그인 시도 시 아이디와 비밀번호 일치 확인
     try:
@@ -76,7 +76,7 @@ def login(user_data: Userlogin, db = Depends(get_db)):
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="비밀번호가 일치하지 않습니다."
                 )
-        sql_check_session_id = "SELECT session_session_id FROM user_has_session WHERE user_user_id = %s"
+        sql_check_session_id = "SELECT session_session_id FROM user_session WHERE user_user_id = %s"
         cursor.execute(sql_check_session_id, (existing_user['user_id'],))
         existing_user_session = cursor.fetchone()
 

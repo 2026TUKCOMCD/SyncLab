@@ -8,6 +8,7 @@ DROP TABLE IF EXISTS video;
 DROP TABLE IF EXISTS user_session;
 DROP TABLE IF EXISTS session;
 DROP TABLE IF EXISTS user;
+DROP TABLE IF EXISTS edit;
 
 -- ==============================================================
 -- 1. user 테이블
@@ -59,6 +60,20 @@ CREATE TABLE video (
     CONSTRAINT fk_video_session FOREIGN KEY (session_session_id) REFERENCES session(session_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='업로드 영상 및 동기화 메타데이터';
 
+-- ==============================================================
+-- 5. edit 테이블
+-- ==============================================================
+CREATE TABLE edit (
+  `edit_id` INT NOT NULL AUTO_INCREMENT,
+  `edit_data` JSON NOT NULL,
+  `session_session_id` VARCHAR(20) NOT NULL,
+  PRIMARY KEY (`edit_id`),
+  INDEX `fk_edit_session1_idx` (`session_session_id` ASC) VISIBLE,
+  CONSTRAINT `fk_edit_session1`
+    FOREIGN KEY (`session_session_id`)
+    REFERENCES `synclab`.`session` (`session_id`))
+ENGINE = InnoDB
+DEFAULT CHARACTER SET = utf8mb3;
 -- ==============================================================
 -- 테스트 데이터 삽입
 -- ==============================================================

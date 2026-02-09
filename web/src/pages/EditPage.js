@@ -23,10 +23,34 @@ function EditPage() {
   const animationRef = useRef(null);
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
   const [cameras, setCameras] = useState([]);
+  const [sessionList, setSessionList] = useState([]); // 사용자가 참여한 여러 세션 목록을 위한 변수
+  const [activeSessionId, setActiveSessionId] = useState(null); // 현재 사용자가 선택한 세션에 대한 변수
   const [isRendering, setIsRendering] = useState(false);
 
-  // 편집화면 이동 시 로그인하 사용자의 user_session_id를 조회하여 해당 세션의 동영상 목록을 출력하는 함수
+  // 페이지 접속 시 user_id로 Session 불러오기
   useEffect(() => {
+    const fetchSessions = async () => {
+      const token = localStorage.getItem('accessToken');
+      try {
+        const response = await axios.get('https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/web/sessions', { // Token에 들어있는 user_id로 세션 조회 시도
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setSessionList(response.data.sessions); // session_id가 저장되어 있는 response를 리스트로 생성
+        if (response.data.sessions.length > 0) {
+          setActiveSessionId(response.data.sessions[0].session_session_id); // 배열 중 가장 상위에 있는 session_id로 초기값 설정 -> null 이나 가장 최근에 생성한 session으로 변경 가능할 듯
+        }
+      }
+      catch (error) {
+        console.error(error);
+      }
+    };
+    fetchSessions();
+  }, []);
+
+  // session으로 반환받은 사용자의 user_session_id로 해당 세션의 동영상 목록을 출력하는 함수
+  useEffect(() => {
+    if (!activeSessionId) return;
+
     const fetchVideos = async () => { // fetchVideos 라는 비동기 함수를 작성하고 useEffect() 끝에서 함수 호출하는 방식
       const token = localStorage.getItem('accessToken');
       console.log("현재 토큰:", token);
@@ -36,13 +60,15 @@ function EditPage() {
       }
       // GET 요청 수행
       try {
-        const response = await axios.get('http://localhost:8000/api/web/list', { // response는 web_video.py에서 @router.get("/list")의 리턴값인 배열
+        const response = await axios.get(`https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/web/list/${activeSessionId}`, { // activeSessionId(현재 선택한 session)를 통해 해당 세션의 비디오 목록 조회
           headers: {
             Authorization: `Bearer ${token}` // Header에 토큰 값 실어서 보내기
           }
         });
         console.log("서버 응답: ", response.data);
         setCameras(response.data.videos);
+        setSavedClips([]); // 세션 재선택 시 클립 초기화
+        setMultiviewCameras([null, null, null, null]); // 세션 재선택 시 멀티뷰 화면 초기화
       }
       catch (error) {
         console.error('네트워크 에러:', error);
@@ -53,16 +79,16 @@ function EditPage() {
       }
     };
     fetchVideos();
-  }, []); // 컴포넌트가 처음 등장한 이후 한 번만 실행되도록 (Mount) -> 목록 보여주는거니까 한 번만 해도 무방함
+  }, [activeSessionId]); // 컴포넌트 렌더링을 activedSessionId가 변경될 떄 마다 수행해줘야 함.
 
   // 타임라인 In, Out 값 드래그 기능
   useEffect(() => {
     if (isDraggingIn || isDraggingOut) { // In 또는 Out이 드래그 중일 때
       window.addEventListener('mousemove', handleMarkerDrag);   //"mousemove" 이벤트에 대해 handleMarkerDrag 리스너 등록
       window.addEventListener('mouseup', handleMarkerMouseUp); // "mouseup" 이벤트에 대해 handleMarkerMouseUp 리스너 등록
-      
+
       return () => { // 등록했던 이벤트 리스너 해제 -> 마우스를 이동시켜도 마커가 움직이지 않도록 제어
-        window.removeEventListener('mousemove', handleMarkerDrag); 
+        window.removeEventListener('mousemove', handleMarkerDrag);
         window.removeEventListener('mouseup', handleMarkerMouseUp);
       };
     }
@@ -112,7 +138,7 @@ function EditPage() {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    const ms = Math.floor((seconds % 1) * 60); // 30프레임임?
+    const f = Math.floor((seconds % 1) * 60); // 60프레임
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${f.toString().padStart(2, '0')}`;
   };
 
@@ -187,7 +213,7 @@ function EditPage() {
     if (!timelineRef.current) return;
 
     // 타임라인 내부의 시간으로 변환하는 수학 로직 -> handleTimeLineCLick의 로직과 유사함
-    const rect = timelineRef.current.getBoundingClientRect(); 
+    const rect = timelineRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const percent = x / rect.width;
     let newTime = Math.max(0, Math.min(percent * duration, duration));
@@ -248,22 +274,22 @@ function EditPage() {
     }
 
     const currentCamData = cameras.find(c => c.id === selectedSourceCam);
-    
+
     const newClip = { // 클립 정보 값 -> 편집 정보로 넘길 때 사용할 예정
       id: Date.now(),
-      sequence : 0,
-      video_url : currentCamData?.videoUrl || "",
-      cam : selectedSourceCam,
+      sequence: 0,
+      video_url: currentCamData?.videoUrl || "",
+      cam: selectedSourceCam,
       start_seek: inPoint,
       end_seek: outPoint,
       duration: outPoint - inPoint,
     };
-    const sortedClips = [...savedClips, newClip].sort((a,b) => a.start_seek - b.start_seek); // 저장된 클립들을 시작 시점과 종료 시점으로 정렬 -> 사용자가 클립의 순서를 꼬아놔도 영상의 진행 순서대로 정렬됨
-    const updatedClips = sortedClips.map((clip,index) => ({
+    const sortedClips = [...savedClips, newClip].sort((a, b) => a.start_seek - b.start_seek); // 저장된 클립들을 시작 시점과 종료 시점으로 정렬 -> 사용자가 클립의 순서를 꼬아놔도 영상의 진행 순서대로 정렬됨
+    const updatedClips = sortedClips.map((clip, index) => ({
       ...clip,
       sequence: index + 1
     }));
-    
+
     console.table(updatedClips);
     setSavedClips(updatedClips);
     setInPoint(outPoint); // 클립 생성 후 Out 지점을 새로운 In 지점으로 지정
@@ -284,8 +310,8 @@ function EditPage() {
   const totalClipDuration = savedClips.reduce((sum, clip) => sum + clip.duration, 0);
 
   // 프로젝트 생성 
-  const handleSavedClips = async() => {
-    if (savedClips.length === 0){
+  const handleSavedClips = async () => {
+    if (savedClips.length === 0) {
       alert("저장된 클립이 없습니다. 먼저 클립을 생성해 주세요.");
       return;
     }
@@ -297,19 +323,19 @@ function EditPage() {
       end_seek: clip.end_seek,
       duration: clip.duration
     }));
-    
+
     const payload = {
       session_id: localStorage.getItem('user_session_id'),
       edit_data: clipArrays
     }
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await axios.post('http://localhost:8000/api/web/save_edit_data', payload, {
-        headers: {Authorization: `Bearer ${token}` }
+      const response = await axios.post('https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/web/save_edit_data', payload, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       alert("편집 정보가 성공적으로 저장되었습니다!");
     }
-    catch (error){
+    catch (error) {
       console.error("저장 실패 : ", error);
     }
     finally {
@@ -319,13 +345,13 @@ function EditPage() {
 
   // 1080p 영상 주소를 480p 주소로 변환
   const getProxyUrl = (originalUrl) => {
-  if (!originalUrl) return "";
-  const proxyUrl = originalUrl
-  .replace(".mp4", "_proxy.mp4")
-  .replace("1080p", "480p")
+    if (!originalUrl) return "";
+    const proxyUrl = originalUrl
+      .replace(".mp4", "_proxy.mp4")
+      .replace("1080p", "480p")
 
-  return proxyUrl;
-};
+    return proxyUrl;
+  };
   /* 화면 구성 부분 */
   return (
     <div className="edit-page-container">
@@ -349,6 +375,28 @@ function EditPage() {
       <div className="main-content">
         {/* 좌측 사이드 바 */}
         <div className="sidebar">
+          {/* 세션 선택 영역 추가 */}
+          <div className="session-select-wrapper">
+            <h2 className="section-title">📅 세션 관리</h2>
+            <div className="session-info-box">
+              <span className="session-label">현재 선택된 세션 ID</span>
+              <div className="session-value">{activeSessionId || "세션을 선택하세요"}</div>
+            </div>
+
+            <select
+              value={activeSessionId || ""}
+              onChange={(e) => setActiveSessionId(e.target.value)}
+              className="session-select-dropdown"
+            >
+              <option value="" disabled>목록에서 세션 변경</option>
+              {sessionList.map((session) => (
+                <option key={session.session_session_id} value={session.session_session_id}>
+                  ID: {session.session_session_id}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <h2 className="section-title">
             📁 리소스 보관함
             {/* (선택사항) 개수 표시 */}
