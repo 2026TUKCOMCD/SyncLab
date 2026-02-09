@@ -89,11 +89,10 @@ fun MainAppScaffold() {
     Scaffold(
         bottomBar = {
             if (showBottomBar) {
-                // 시안 디자인 적용: 배경 흰색, 상단 테두리 미세하게
                 NavigationBar(
                     containerColor = Color.White,
                     tonalElevation = 8.dp,
-                    modifier = Modifier.height(80.dp) // 시안의 h-20 반영
+                    modifier = Modifier.height(80.dp)
                 ) {
                     bottomNavItems.forEach { screen ->
                         val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true
@@ -137,7 +136,7 @@ fun MainAppScaffold() {
                                 }
                             },
                             colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = Color(0xFF3366FF), // 시안의 blue-600
+                                selectedIconColor = Color(0xFF3366FF),
                                 selectedTextColor = Color(0xFF3366FF),
                                 unselectedIconColor = Color(0xFF94A3B8), // 시안의 slate-400
                                 unselectedTextColor = Color(0xFF94A3B8),

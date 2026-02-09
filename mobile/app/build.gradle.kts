@@ -1,8 +1,18 @@
+// [필수 추가] .env 파일을 읽기 위한 임포트
+import java.util.Properties
+import java.io.FileInputStream
+
+// [필수 추가] 상위 폴더의 .env 읽기 로직
+val prop = Properties()
+val envFile = project.rootProject.file("../.env")
+if (envFile.exists()) {
+    prop.load(FileInputStream(envFile))
+}
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
-
 }
 
 android {
@@ -11,28 +21,22 @@ android {
 
     testOptions {
         unitTests {
-            isIncludeAndroidResources = true // Robolectric이 리소스를 사용할 수 있게 설정
+            isIncludeAndroidResources = true
         }
     }
+
     packaging {
         jniLibs {
-            // JNI 라이브러리를 16KB 페이지 경계에 맞게 정렬하여 빌드
-            // Kotlin DSL에서는 packaging 블록을 사용합니다.
             useLegacyPackaging = false
         }
-    }
-
-    packaging {
         resources {
-            // INDEX.LIST 파일이 중복될 경우 빌드에서 제외합니다.
             excludes += "/META-INF/INDEX.LIST"
-
-            // 혹시 몰라 자주 발생하는 다른 중복 파일들도 미리 처리해두면 좋습니다.
             excludes += "/META-INF/io.netty.versions.properties"
             excludes += "/META-INF/DEPENDENCIES"
         }
     }
-    viewBinding{
+
+    viewBinding {
         enable = true
     }
 
@@ -44,6 +48,10 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // [필수 추가] BuildConfig에 BASE_URL 주입
+        val baseUrl = prop.getProperty("BASE_URL") ?: "\"http://10.0.2.2:3000/\""
+        buildConfigField("String", "BASE_URL", baseUrl)
     }
 
     buildTypes {
@@ -55,70 +63,58 @@ android {
             )
         }
     }
+
     compileOptions {
-        // SDK 26(Oreo) 이상을 타겟팅하므로 Java 17을 사용하는 것이 요즘 표준입니다.
-        // (Android Studio 최신 버전은 Java 17을 기본으로 요구합니다)
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
+
     kotlinOptions {
         jvmTarget = "17"
     }
 
     buildFeatures {
         compose = true
-        // ✅ 꼭 추가하세요! S3 주소나 서버 URL을 관리할 때 BuildConfig 클래스가 필요합니다.
+        // [필수 추가] BuildConfig 기능 활성화
         buildConfig = true
     }
 }
 
 dependencies {
+    // 기존 의존성 유지 (중복 및 문법 오류만 수정)
     implementation(libs.androidx.navigation.fragment)
     implementation(libs.firebase.appdistribution.gradle)
     implementation(libs.core.ktx)
 
-    // 1. 영상 촬영 (Google 권장 CameraX 라이브러리)
     val camerax_version = "1.3.0"
     implementation("androidx.camera:camera-core:$camerax_version")
     implementation("androidx.camera:camera-camera2:$camerax_version")
     implementation("androidx.camera:camera-video:$camerax_version")
     implementation("androidx.camera:camera-view:$camerax_version")
     implementation("androidx.camera:camera-lifecycle:$camerax_version")
-    // "ListenableFuture" class not found error fix
     implementation("com.google.guava:listenablefuture:1.0")
-    // NTP 통신 라이브러리
     implementation("commons-net:commons-net:3.9.0")
 
-    // 2. AWS S3 (영상 직접 업로드용)
     implementation("com.amazonaws:aws-android-sdk-s3:2.73.0")
     implementation("com.squareup.retrofit2:retrofit:2.9.0")
     implementation("com.squareup.retrofit2:converter-gson:2.9.0")
     implementation("com.squareup.okhttp3:okhttp:4.11.0")
     implementation("com.squareup.okhttp3:logging-interceptor:4.11.0")
 
-    // 3. NTP 시간 동기화 (정확한 촬영 시작 시간 확보용)
     implementation("com.github.instacart.truetime-android:library:3.5")
 
-    // 4. 서버 통신
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-gson:2.9.0")
-
-    // 5. SDK 35 호환을 위한 버전 고정 (libs.xxx 대신 직접 선언)
     implementation("androidx.core:core-ktx:1.13.1")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.8.6")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.6.2")
 
-
-    // 6. 버전 충돌 방지 버전 강제
     implementation("com.google.android.gms:play-services-tasks:18.0.2")
     implementation("com.google.guava:guava:31.1-android")
+
     constraints {
-        implementation("com.google.guava:guava:31.1-android") {
-            because("CameraX와 다른 라이브러리 간의 ListenableFuture 버전 충돌 해결")
-        }
+        implementation("com.google.guava:guava:31.1-android")
     }
-    // 6. Compose 및 UI 관련 (중복되는 libs.core/activity/lifecycle 삭제됨)
+
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
@@ -126,36 +122,27 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation("io.coil-kt:coil-compose:2.5.0")
 
-    // 테스트 관련
+    // 테스트 관련 (중첩된 dependencies 블록을 하나로 통합)
     testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.10.3")
+    testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0")
+    testImplementation("com.google.code.gson:gson:2.10.1")
+    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.1")
+
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.ui.test.junit4)
+
     debugImplementation(libs.androidx.ui.tooling)
     debugImplementation(libs.androidx.ui.test.manifest)
-    testImplementation("org.robolectric:robolectric:4.10.3")
+
     implementation("androidx.compose.runtime:runtime-livedata:1.5.4")
     implementation(libs.androidx.work.testing)
 
-    dependencies {
-        testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0") // 네트워크 테스트용
-        testImplementation("com.google.code.gson:gson:2.10.1")        // JSON 테스트용
-    }
-    dependencies {
-        testImplementation("com.squareup.okhttp3:mockwebserver:4.11.0")
-        testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.7.1")
-    }
-
-    //기타 기능
     implementation("androidx.datastore:datastore-preferences:1.1.1")
     implementation("androidx.work:work-runtime-ktx:2.9.0")
 
-    implementation(platform("androidx.compose:compose-bom:2024.10.00")) // 안정화된 버전 묶음
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.material3:material3")
-    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
-
 }

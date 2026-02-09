@@ -19,10 +19,6 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     var isProcessing by mutableStateOf(false)
         private set
 
-    /**
-     * 서버 로그인 수행
-     * onSuccess 콜백이 이제 LoginResponse를 인자로 전달합니다.
-     */
     fun login(
         userId: String,
         userPw: String,
@@ -43,10 +39,9 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 if (response.isSuccessful) {
                     val loginBody = response.body()
                     if (loginBody?.status == "success" && loginBody != null) {
-                        // 1. JWT 토큰 저장
                         authManager.saveToken(loginBody.accessToken)
 
-                        // 2. [핵심] 성공 콜백에 서버 응답 데이터를 담아서 던져줌!
+
                         onSuccess(loginBody)
                     } else {
                         onError("아이디 또는 비밀번호가 올바르지 않습니다.")

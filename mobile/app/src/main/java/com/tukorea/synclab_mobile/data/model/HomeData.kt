@@ -2,8 +2,6 @@ package com.tukorea.synclab_mobile.data.model
 
 import com.google.gson.annotations.SerializedName
 
-// --- 1. 공통 정보 모델 ---
-
 data class SessionInfo(
     @SerializedName("session_id") val sessionId: String,
     @SerializedName("session_name") val sessionName: String,
@@ -20,7 +18,6 @@ data class VideoStatus(
     val timestamp: Long
 )
 
-// --- 2. 응답/요청 DTO 모델 ---
 
 data class SessionResponse(
     val status: String,
@@ -35,13 +32,11 @@ data class VerifyCodeResponse(
     val message: String? = null
 )
 
-// com.tukorea.synclab_mobile.data.model 패키지
 data class HomeDataResponse(
     @SerializedName("current_session") val currentSession: SessionInfo?,
     val history: List<SessionInfo>,
     val videos: Map<String, List<VideoStatus>>? = null,
 
-    // [추가] DB의 user_name과 id를 받기 위한 필드
     @SerializedName("user_name") val userName: String? = null,
     @SerializedName("user_id") val userId: String? = null,
 

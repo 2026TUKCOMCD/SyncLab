@@ -19,7 +19,6 @@ import androidx.core.content.ContextCompat
 import androidx.work.*
 import com.tukorea.synclab_mobile.data.repository.SettingsRepository
 import com.tukorea.synclab_mobile.ui.screens.upload.VideoUploadWorker
-import com.tukorea.synclab_mobile.utils.NetworkMonitor
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import java.io.File
@@ -31,7 +30,7 @@ import java.util.concurrent.Executor
 fun CameraView(
     modifier: Modifier = Modifier,
     isRecording: Boolean,
-    sessionId: String, // 👈 세션 ID 추가
+    sessionId: String,
     onRecordingStarted: (Recording) -> Unit,
     onRecordingFinished: (File) -> Unit
 ) {
@@ -40,9 +39,7 @@ fun CameraView(
     val mainExecutor: Executor = ContextCompat.getMainExecutor(context)
     val scope = rememberCoroutineScope()
 
-    // 설정 및 네트워크 모니터 인스턴스
     val settingsRepository = remember { SettingsRepository(context) }
-    val networkMonitor = remember { NetworkMonitor(context) }
 
     val previewView = remember {
         PreviewView(context).apply {
@@ -74,7 +71,7 @@ fun CameraView(
         }, mainExecutor)
     }
 
-    // 2. 녹화 종료 및 업로드 로직 실행
+    // 2. 녹화 제어 로직
     LaunchedEffect(isRecording) {
         if (isRecording) {
             val videoCapture = videoCaptureState.value ?: return@LaunchedEffect
@@ -95,9 +92,8 @@ fun CameraView(
                     if (!event.hasError()) {
                         Log.d("CameraView", "녹화 완료: ${file.absolutePath}")
 
-                        // [핵심 로직] sessionId를 함께 전달하도록 수정
                         scope.launch {
-                            handleUploadLogic(context, settingsRepository, networkMonitor, file, sessionId)
+                            handleUploadLogic(context, settingsRepository, file, sessionId)
                         }
 
                         onRecordingFinished(file)
@@ -113,59 +109,42 @@ fun CameraView(
     AndroidView(factory = { previewView }, modifier = modifier.fillMaxSize())
 }
 
-/**
- * 사용자 설정 및 네트워크 상태에 따른 업로드 흐름 제어 (sessionId 추가)
- */
+
 private suspend fun handleUploadLogic(
     context: Context,
     repository: SettingsRepository,
-    networkMonitor: NetworkMonitor,
     videoFile: File,
-    sessionId: String // 👈 추가
+    sessionId: String
 ) {
     val isWifiOnly = repository.isWifiOnlyFlow.first()
     val isAutoUpload = repository.isAutoUploadFlow.first()
-    val isWifiNow = networkMonitor.isWifiConnected.first()
 
-    Log.d("UploadFlow", "흐름체크: Wi-Fi전용($isWifiOnly), 현재Wi-Fi($isWifiNow), 자동업로드($isAutoUpload)")
+    Log.d("UploadFlow", "설정 확인 -> Wi-Fi전용: $isWifiOnly, 자동업로드: $isAutoUpload")
 
-    if (isWifiOnly) {
-        if (isWifiNow) {
-            if (isAutoUpload) {
-                enqueueWork(context, videoFile, requireWifi = true, sessionId = sessionId)
-            } else {
-                Log.d("UploadFlow", "Wi-Fi 환경이지만 자동 업로드가 꺼져 있어 수동 저장합니다.")
-            }
-        } else {
-            Log.d("UploadFlow", "Wi-Fi 전용 모드이나 현재 LTE이므로 자동 업로드를 수행하지 않습니다.")
-        }
+    if (isAutoUpload) {
+        enqueueWork(context, videoFile, requireWifi = isWifiOnly, sessionId = sessionId)
     } else {
-        if (isAutoUpload) {
-            enqueueWork(context, videoFile, requireWifi = false, sessionId = sessionId)
-        } else {
-            Log.d("UploadFlow", "자동 업로드가 꺼져 있어 수동 저장합니다.")
-        }
+        Log.d("UploadFlow", "자동 업로드가 비활성화되어 있습니다. 로컬 저장만 수행합니다.")
     }
 }
 
-/**
- * WorkManager에 업로드 작업 등록 (session_id 포함)
- */
-private fun enqueueWork(context: Context, file: File, requireWifi: Boolean, sessionId: String) { // 👈 sessionId 추가
+// requireWifi가 true이면 UNMETERED(와이파이), false이면 CONNECTED(모든 네트워크)
+private fun enqueueWork(context: Context, file: File, requireWifi: Boolean, sessionId: String) {
+    val networkType = if (requireWifi) NetworkType.UNMETERED else NetworkType.CONNECTED
+
     val constraints = Constraints.Builder()
-        .setRequiredNetworkType(NetworkType.CONNECTED)
-        .setRequiresBatteryNotLow(false)
-        .setRequiresStorageNotLow(false)
+        .setRequiredNetworkType(networkType) // 👈 시스템이 와이파이 연결 시점을 자동으로 감지
+        .setRequiresStorageNotLow(true)
         .build()
 
     val request = OneTimeWorkRequestBuilder<VideoUploadWorker>()
         .setConstraints(constraints)
-        .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
         .setInputData(workDataOf(
             "video_path" to file.absolutePath,
             "json_path" to file.absolutePath.replace(".mp4", ".json"),
-            "session_id" to sessionId // 👈 핵심: Worker에서 사용하는 키값 "session_id"로 전달
+            "session_id" to sessionId
         ))
+        .addTag("VideoUpload")
         .build()
 
     WorkManager.getInstance(context).enqueueUniqueWork(
@@ -173,5 +152,6 @@ private fun enqueueWork(context: Context, file: File, requireWifi: Boolean, sess
         ExistingWorkPolicy.REPLACE,
         request
     )
-    Log.d("UploadFlow", "WorkManager 재등록 완료 (SID: $sessionId)")
+
+    Log.d("UploadFlow", "WorkManager 예약 완료 - 모드: ${if(requireWifi) "Wi-Fi Only" else "Any Network"}")
 }

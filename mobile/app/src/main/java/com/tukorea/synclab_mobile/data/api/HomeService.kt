@@ -1,6 +1,6 @@
 package com.tukorea.synclab_mobile.data.api
 
-import com.tukorea.synclab_mobile.data.model.* // 모델들을 불러옵니다.
+import com.tukorea.synclab_mobile.data.model.*
 import retrofit2.http.*
 
 interface HomeService {

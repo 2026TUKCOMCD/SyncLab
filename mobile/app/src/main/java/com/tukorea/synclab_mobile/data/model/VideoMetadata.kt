@@ -20,7 +20,7 @@ data class VideoMetadata(
     val duration: Double = 0.0,
 
     @SerializedName("session_id")
-    val sessionId: String? = null // 기본값을 빼고 실제 데이터 유무를 체크하는 게 안전합니다.
+    val sessionId: String? = null
 ) {
     fun toJson(): String = GsonBuilder().create().toJson(this)
 

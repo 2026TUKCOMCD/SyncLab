@@ -14,9 +14,6 @@ boto3
 ffmpeg-python==0.2.0
 static-ffmpeg==2.5
 
-# 영상 처리
-ffmpeg-python
-
 # 유틸리티
 python-dotenv
 

@@ -20,19 +20,16 @@ class UploadRepository {
     suspend fun uploadVideoToS3(
         videoFile: File,
         metadata: VideoMetadata,
-        sessionId: String, // 👈 Worker에서 넘겨준 세션 ID 파라미터
+        sessionId: String,
         onProgress: (Float) -> Unit = {}
     ): Result<Unit> {
         return withContext(Dispatchers.IO) {
             try {
-                // 1. 사전 검증 단계
                 if (!videoFile.exists()) {
                     Log.e("UploadRepository", "❌ 파일을 찾을 수 없음: ${videoFile.absolutePath}")
                     return@withContext Result.failure(Exception("파일 없음"))
                 }
 
-                // 🔥 [수정] val sessionId = metadata.sessionId 줄을 삭제했습니다.
-                // 파라미터로 받은 sessionId를 직접 사용하며, null/empty 체크만 수행합니다.
                 if (sessionId.isNullOrEmpty()) {
                     Log.e("UploadRepository", "❌ 세션 ID가 누락되었습니다. (파라미터 확인 필요)")
                     return@withContext Result.failure(Exception("세션 ID 누락"))
@@ -41,10 +38,10 @@ class UploadRepository {
                 val chunkCount = Math.ceil(videoFile.length().toDouble() / CHUNK_SIZE).toInt()
                 Log.d("UploadRepository", "🚀 S3 업로드 시퀀스 시작: SID=$sessionId, File=${videoFile.name} (파트: $chunkCount)")
 
-                // [1단계] 업로드 초기화
+
                 val initResponse = try {
                     api.initMultipartUpload(
-                        sessionId = sessionId, // 👈 파라미터 sessionId 사용
+                        sessionId = sessionId,
                         filename = videoFile.name,
                         partCount = chunkCount
                     )
@@ -59,7 +56,6 @@ class UploadRepository {
 
                 val etags = mutableListOf<String>()
 
-                // [2단계] S3로 조각(Part) 업로드
                 for (i in 0 until chunkCount) {
                     val offset = i * CHUNK_SIZE
                     val currentPartSize = Math.min(CHUNK_SIZE, videoFile.length() - offset)
@@ -90,13 +86,11 @@ class UploadRepository {
                     onProgress((i + 1).toFloat() / chunkCount)
                 }
 
-                // [3단계] 서버 완료 보고
                 val completeRequest = CompleteUploadRequest(
-                    sessionId = sessionId, // 👈 파라미터 sessionId 사용
+                    sessionId = sessionId,
                     uploadId = uploadId,
                     videoName = s3Key,
                     etags = etags,
-                    // metadata 내부의 sessionId도 파라미터 값으로 강제 업데이트해서 일관성 유지
                     metadata = metadata.copy(sessionId = sessionId)
                 )
 

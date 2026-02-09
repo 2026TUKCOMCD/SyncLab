@@ -57,7 +57,6 @@ fun UploadScreen(
 
     LaunchedEffect(Unit) { loadData() }
 
-    // 삭제 다이얼로그
     if (showDeleteDialog && fileToDelete != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -134,7 +133,6 @@ fun UploadScreen(
                                     return@launch
                                 }
 
-                                // ✅ [핵심 수정] ViewModel에서 현재 세션 ID 추출
                                 val currentSessionId = homeViewModel.currentSession?.sessionId
 
                                 if (currentSessionId.isNullOrBlank()) {
@@ -147,7 +145,6 @@ fun UploadScreen(
                                     .setRequiredNetworkType(NetworkType.CONNECTED)
                                     .build()
 
-                                // ✅ [핵심 수정] InputData에 session_id 추가
                                 val uploadWorkRequest = OneTimeWorkRequestBuilder<VideoUploadWorker>()
                                     .addTag("VideoUpload")
                                     .addTag("name_${file.name}")
@@ -174,7 +171,6 @@ fun UploadScreen(
     }
 }
 
-// 하단 컴포넌트들은 기존과 동일 (UI 로직)
 @Composable
 fun ActiveUploadItem(workInfo: WorkInfo, onCancel: () -> Unit) {
     val progress = workInfo.progress.getFloat("progress", 0f)

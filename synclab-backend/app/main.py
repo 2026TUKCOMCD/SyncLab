@@ -7,7 +7,17 @@ from app.routers import session
 from app.database.connection import test_connection
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
+env_path = Path(__file__).resolve().parent.parent.parent / ".env"
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+    print(f"✅ 통합 .env 로드 성공: {env_path}")
+else:
+    # 파일이 없을 경우를 대비해 기본 load_dotenv() 실행 혹은 경고
+    load_dotenv() 
+    print(f"⚠️ 통합 .env를 찾지 못해 기본 경로에서 로드를 시도합니다.")
+    
 load_dotenv()
 
 # FastAPI 앱 생성

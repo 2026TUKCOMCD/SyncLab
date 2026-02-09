@@ -27,11 +27,12 @@ import kotlinx.coroutines.launch
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
-    onLoginSuccess: (LoginResponse) -> Unit, // 👈 LoginResponse 인자를 받도록 정의됨
+    onLoginSuccess: (LoginResponse) -> Unit,
     onGuestLogin: (String) -> Unit
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
     val authManager = remember { AuthManager(context) }
 
     var userId by remember { mutableStateOf("") }
@@ -41,33 +42,39 @@ fun LoginScreen(
     var showGuestDialog by remember { mutableStateOf(false) }
     var inviteCodeInput by remember { mutableStateOf("") }
 
-    // 비회원 초대 코드 다이얼로그 (생략 없이 유지)
+
     if (showGuestDialog) {
         AlertDialog(
             onDismissRequest = { showGuestDialog = false },
             title = { Text("비회원 입장", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
-                    Text("6자리 숫자 초대 코드를 입력하세요.", fontSize = 14.sp, color = Color.Gray)
+                    Text("8자리 초대 코드를 입력하세요.", fontSize = 14.sp, color = Color.Gray)
                     OutlinedTextField(
                         value = inviteCodeInput,
-                        onValueChange = { if (it.length <= 6 && it.all { c -> c.isDigit() }) inviteCodeInput = it },
-                        label = { Text("6자리 숫자 코드") },
+                        onValueChange = {
+                            if (it.length <= 8) inviteCodeInput = it
+                        },
+                        label = { Text("8자리 초대 코드") },
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
                     )
                 }
             },
             confirmButton = {
                 Button(
-                    enabled = inviteCodeInput.length == 6,
+                    enabled = inviteCodeInput.length == 8,
                     onClick = {
+                        authManager.clearAuthData()
+
                         onGuestLogin(inviteCodeInput)
                         showGuestDialog = false
                     }
                 ) { Text("입장하기") }
             },
-            dismissButton = { TextButton(onClick = { showGuestDialog = false }) { Text("취소") } }
+            dismissButton = {
+                TextButton(onClick = { showGuestDialog = false }) { Text("취소") }
+            }
         )
     }
 
@@ -108,7 +115,6 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(32.dp))
 
-            // ✅ 수정된 로그인 버튼 로직
             Button(
                 enabled = !isProcessing,
                 onClick = {
@@ -117,17 +123,11 @@ fun LoginScreen(
                         coroutineScope.launch {
                             try {
                                 val response = NetworkClient.authService.login(LoginRequest(userId, userPw))
-
                                 if (response.isSuccessful) {
                                     val loginBody = response.body()
                                     if (loginBody?.status == "success" && loginBody != null) {
-                                        // 1. 토큰 저장
                                         authManager.saveToken(loginBody.accessToken)
-
-                                        // 2. [핵심 수정] 빈 괄호가 아니라 loginBody를 넣어줍니다!
-                                        // 여기서 넘긴 loginBody가 NavGraph를 거쳐 HomeViewModel로 전달됩니다.
                                         onLoginSuccess(loginBody)
-
                                     } else {
                                         Toast.makeText(context, "로그인 정보가 틀렸습니다.", Toast.LENGTH_SHORT).show()
                                     }
@@ -157,7 +157,11 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(12.dp))
 
             OutlinedButton(
-                onClick = { showGuestDialog = true },
+                onClick = {
+                    // 다이얼로그 띄우기 전에도 입력 필드 초기화
+                    inviteCodeInput = ""
+                    showGuestDialog = true
+                },
                 modifier = Modifier.fillMaxWidth().height(56.dp)
             ) {
                 Text(text = "비회원으로 시작하기", fontSize = 16.sp)

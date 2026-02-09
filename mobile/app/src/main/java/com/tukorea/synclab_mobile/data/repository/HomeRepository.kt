@@ -10,13 +10,10 @@ import kotlinx.coroutines.withContext
 class HomeRepository {
     private val api: HomeService = NetworkClient.homeService
 
-    /**
-     * [PC/관리자] 세션 생성 (name만 전송)
-     */
     suspend fun createNewSession(name: String): Result<SessionResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                // SessionCreateRequest(sessionName = name) -> @SerializedName("name")으로 서버에 전달됨
+
                 val request = SessionCreateRequest(sessionName = name)
                 val response = api.createSession(request)
 
@@ -29,9 +26,7 @@ class HomeRepository {
         }
     }
 
-    /**
-     * [모바일/참가자] 6자리 숫자로 세션 정보 조회
-     */
+
     suspend fun verifyConnectCode(code: String): Result<VerifyCodeResponse> {
         return withContext(Dispatchers.IO) {
             try {
@@ -45,13 +40,9 @@ class HomeRepository {
         }
     }
 
-    /**
-     * [세션 참가] 초대 코드를 사용하여 세션 입장
-     */
     suspend fun joinSession(inviteCode: String): Result<SessionResponse> {
         return withContext(Dispatchers.IO) {
             try {
-                // SessionJoinRequest(inviteCode = inviteCode) -> @SerializedName("invite_code")로 서버에 전달됨
                 val request = SessionJoinRequest(inviteCode = inviteCode)
                 val response = api.joinSession(request)
                 Log.d("HomeRepository", "✅ 세션 참가 성공: ${response.session.sessionName}")
@@ -63,9 +54,6 @@ class HomeRepository {
         }
     }
 
-    /**
-     * 세션별 영상 리스트 조회
-     */
     suspend fun fetchSessionVideos(sessionId: String): Result<Map<String, Any>> {
         return withContext(Dispatchers.IO) {
             try {

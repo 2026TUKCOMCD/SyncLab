@@ -42,7 +42,6 @@ fun HomeScreen(
     val context = LocalContext.current
     var backPressedTime by remember { mutableLongStateOf(0L) }
 
-    // 뒤로가기 종료 로직
     BackHandler {
         val currentTime = System.currentTimeMillis()
         if (currentTime - backPressedTime < 2000) {
@@ -53,7 +52,6 @@ fun HomeScreen(
         }
     }
 
-    // 영상 처리 상태 자동 갱신 (Polling)
     LaunchedEffect(viewModel.recentVideos) {
         if (viewModel.recentVideos.any { it.status == "PROCESSING" || it.status == "PENDING" }) {
             while (true) {
@@ -63,7 +61,6 @@ fun HomeScreen(
                 } catch (e: Exception) {
                     Log.e("HomeScreen", "Polling Error: ${e.message}")
                 }
-                // 모든 영상이 완료되면 중단
                 if (viewModel.recentVideos.all { it.status == "COMPLETED" }) break
             }
         }
@@ -78,7 +75,6 @@ fun HomeScreen(
             confirmButton = {
                 Button(onClick = {
                     showCreateDialog = false
-                    // ✅ 수정: ViewModel의 변경된 인자(name)에 맞춰 호출 (userPk 제거됨)
                     viewModel.createSession("모바일 세션 ${System.currentTimeMillis() % 1000}")
                 }) { Text("생성") }
             },
@@ -95,12 +91,11 @@ fun HomeScreen(
             title = { Text("세션 참가") },
             text = {
                 Column {
-                    Text("공유받은 8자리 세션 ID 또는 6자리 초대 코드를 입력하세요.")
+                    Text("공유받은 8자리 초대 코드를 입력하세요.")
                     Spacer(modifier = Modifier.height(8.dp))
                     OutlinedTextField(
                         value = joinCodeInput,
                         onValueChange = {
-                            // 세션 ID(8자리) 또는 초대코드(6자리) 대응을 위해 8자리로 제한
                             if (it.length <= 8) joinCodeInput = it.uppercase().filter { it.isLetterOrDigit() }
                         },
                         label = { Text("참가 코드") },
@@ -112,7 +107,6 @@ fun HomeScreen(
             },
             confirmButton = {
                 Button(
-                    // 최소 6자리(초대코드) 이상일 때 활성화
                     enabled = joinCodeInput.length >= 6,
                     onClick = {
                         viewModel.joinSession(joinCodeInput)
@@ -169,7 +163,6 @@ fun HomeScreen(
                 }
             }
 
-            // 상단 액션 카드 (생성/참가)
             item {
                 Row(
                     modifier = Modifier.padding(top = 20.dp).fillMaxWidth(),
@@ -196,7 +189,6 @@ fun HomeScreen(
                 }
             }
 
-            // 현재 세션 카드
             item {
                 CurrentSessionCard(viewModel = viewModel)
             }
@@ -212,7 +204,6 @@ fun HomeScreen(
                 items(viewModel.recentVideos) { video -> VideoStatusItem(video) }
             }
 
-            // 과거 기록 (회원 전용)
             if (!viewModel.isGuest) {
                 item { SectionHeader(title = "과거 세션 기록", showViewAll = false) }
 
@@ -227,10 +218,15 @@ fun HomeScreen(
                             shadowElevation = 1.dp
                         ) {
                             Column {
-                                viewModel.sessionHistory.forEachIndexed { index, session ->
+                                val limitedHistory = viewModel.sessionHistory.take(4)
+
+                                limitedHistory.forEachIndexed { index, session ->
                                     SessionHistoryItem(session)
-                                    if (index < viewModel.sessionHistory.size - 1) {
-                                        HorizontalDivider(modifier = Modifier.padding(horizontal = 20.dp), color = Color(0xFFF1F5F9))
+                                    if (index < limitedHistory.size - 1) {
+                                        HorizontalDivider(
+                                            modifier = Modifier.padding(horizontal = 20.dp),
+                                            color = Color(0xFFF1F5F9)
+                                        )
                                     }
                                 }
                             }
@@ -289,7 +285,6 @@ fun CurrentSessionCard(viewModel: HomeViewModel) {
                     }
                 }
 
-                // ✅ 초대 코드 및 만료 시간 표시
                 if (viewModel.currentInviteCode.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(12.dp))
                     Surface(

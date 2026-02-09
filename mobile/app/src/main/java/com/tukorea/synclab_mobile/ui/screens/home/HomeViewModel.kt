@@ -13,12 +13,10 @@ import kotlinx.coroutines.launch
 class HomeViewModel : ViewModel() {
     private val repository = HomeRepository()
 
-    // 현재 참여 중인 세션 정보 (가장 중요: 여기에 ID가 있어야 업로드 가능)
     var currentSession by mutableStateOf<SessionInfo?>(null)
     var sessionHistory by mutableStateOf<List<SessionInfo>>(emptyList())
     var recentVideos by mutableStateOf<List<VideoStatus>>(emptyList())
 
-    // 사용자 정보 상태
     var isGuest by mutableStateOf(true)
     var userName by mutableStateOf("게스트")
     var userEmail by mutableStateOf("로그인이 필요합니다")
@@ -27,19 +25,14 @@ class HomeViewModel : ViewModel() {
     var expiresIn by mutableIntStateOf(0)
 
     init {
-        // 앱 실행 시 기존 세션 정보를 불러옴
         loadHomeData()
     }
 
-    /**
-     * [추가됨] 로그인 직후 서버 응답 데이터를 뷰모델에 강제로 주입하는 함수
-     */
     fun updateUserInfo(loginResponse: LoginResponse) {
         this.userName = loginResponse.userName
         this.userEmail = "${loginResponse.userId}@synclab.com"
         this.isGuest = false
 
-        // 서버가 준 currentSessionId가 있다면 즉시 세팅
         if (!loginResponse.currentSessionId.isNullOrEmpty()) {
             this.currentSession = SessionInfo(
                 sessionId = loginResponse.currentSessionId,
@@ -54,7 +47,6 @@ class HomeViewModel : ViewModel() {
             try {
                 val response = com.tukorea.synclab_mobile.api.NetworkClient.homeService.getHomeData()
 
-                // 사용자 정보 업데이트
                 response.userName?.let {
                     this@HomeViewModel.userName = it
                     this@HomeViewModel.isGuest = false
@@ -93,8 +85,7 @@ class HomeViewModel : ViewModel() {
 
     fun joinSession(input: String) {
         viewModelScope.launch {
-            // 6자리 숫자면 단기 코드 검증, 아니면 초대 코드로 바로 가입
-            if (input.length == 6 && input.all { it.isDigit() }) {
+            if (input.length == 8 && input.all { it.isDigit() }) {
                 repository.verifyConnectCode(input).onSuccess { verifyResponse ->
                     joinSessionByInviteCode(verifyResponse.sessionId)
                 }.onFailure { e ->

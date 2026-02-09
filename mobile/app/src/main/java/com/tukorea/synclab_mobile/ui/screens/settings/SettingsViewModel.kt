@@ -8,20 +8,21 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.tukorea.synclab_mobile.utils.userSettingsStore
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
-// UI 상태 데이터 모델
 data class SettingsUiState(
     val isGuest: Boolean = true,
     val isWifiOnly: Boolean = true,
     val isAutoUpload: Boolean = false,
-    val cacheSize: String = "1.2GB",
+    val cacheSize: String = "0.0MB",
     val userName: String = "게스트",
     val userEmail: String = "로그인이 필요합니다",
-    // [수정] 기본 이미지를 UI Avatars(2번 옵션) 경로로 변경
     val profileImageUrl: Any = "https://ui-avatars.com/api/?name=Guest&background=EBF4FF&color=7F9CF5&bold=true"
 )
 
@@ -34,11 +35,11 @@ class SettingsViewModel(private val context: Context) : ViewModel() {
 
     init {
         loadSettings()
+        updateCacheSize()
     }
 
     private fun loadSettings() {
         viewModelScope.launch {
-            // [정상 작동] utils에서 가져온 userSettingsStore 사용
             context.userSettingsStore.data.collect { prefs ->
                 _uiState.value = _uiState.value.copy(
                     isWifiOnly = prefs[WIFI_ONLY_KEY] ?: true,
@@ -48,7 +49,34 @@ class SettingsViewModel(private val context: Context) : ViewModel() {
         }
     }
 
-    // [수정] SettingsScreen의 호출부(name, email)와 파라미터 이름을 일치시켰습니다.
+    private fun updateCacheSize() {
+        viewModelScope.launch {
+            val totalSize = withContext(Dispatchers.IO) {
+                calculateFolderSize(context.cacheDir) +
+                        (context.externalCacheDir?.let { calculateFolderSize(it) } ?: 0L)
+            }
+            _uiState.value = _uiState.value.copy(cacheSize = formatSize(totalSize))
+        }
+    }
+
+    private fun calculateFolderSize(file: File): Long {
+        var length: Long = 0
+        val files = file.listFiles()
+        if (files != null) {
+            for (f in files) {
+                length += if (f.isDirectory) calculateFolderSize(f) else f.length()
+            }
+        }
+        return length
+    }
+
+    private fun formatSize(size: Long): String {
+        if (size <= 0) return "0.0MB"
+        val units = arrayOf("B", "KB", "MB", "GB", "TB")
+        val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
+        return String.format("%.1f%s", size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    }
+
     fun syncUserInfo(
         isGuestUser: Boolean,
         userNameFromDb: String,
@@ -70,11 +98,17 @@ class SettingsViewModel(private val context: Context) : ViewModel() {
     fun clearCache() {
         viewModelScope.launch {
             try {
-                context.cacheDir.deleteRecursively()
-                context.externalCacheDir?.deleteRecursively()
-                _uiState.value = _uiState.value.copy(cacheSize = "0.0MB")
+                withContext(Dispatchers.IO) {
+                    context.cacheDir.deleteRecursively()
+                    context.externalCacheDir?.deleteRecursively()
+                    // 삭제 후 폴더 구조 재생성 (일부 API 에러 방지)
+                    context.cacheDir.mkdirs()
+                    context.externalCacheDir?.mkdirs()
+                }
+                updateCacheSize() // 삭제 후 UI 갱신 (0.0MB)
+                Log.d("Settings", "캐시 삭제 완료")
             } catch (e: Exception) {
-                Log.e("Settings", "캐시 삭제 실패")
+                Log.e("Settings", "캐시 삭제 실패", e)
             }
         }
     }

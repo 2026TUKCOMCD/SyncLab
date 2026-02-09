@@ -36,8 +36,7 @@ fun NavGraph(
         // 1. 로그인 화면
         composable(route = Screen.Login.route) {
             LoginScreen(
-                onLoginSuccess = { loginResponse -> // 👈 [수정] 서버 응답(LoginResponse)을 받음
-                    // ✅ [핵심] 뷰모델에 유저 정보와 세션 ID를 즉시 업데이트
+                onLoginSuccess = { loginResponse ->
                     sharedHomeViewModel.updateUserInfo(loginResponse)
 
                     navController.navigate(Screen.Home.route) {
@@ -59,7 +58,6 @@ fun NavGraph(
             HomeScreen(viewModel = sharedHomeViewModel)
         }
 
-        // 공통 네비게이션 헬퍼
         val navigateToHome = {
             navController.navigate(Screen.Home.route) {
                 popUpTo(Screen.Home.route) { inclusive = true }
@@ -90,7 +88,7 @@ fun NavGraph(
             SettingsScreen(
                 onBackClick = { navigateToHome() },
                 onLogoutSuccess = {
-                    sharedHomeViewModel.performLogout() // ✅ clearSession 대신 통합 로그아웃 호출
+                    sharedHomeViewModel.performLogout()
 
                     navController.navigate(Screen.Login.route) {
                         popUpTo(0) { inclusive = true }
