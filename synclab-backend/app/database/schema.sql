@@ -16,7 +16,7 @@ CREATE TABLE user (
     user_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '내부 관리용 유저 고유 번호',
     id VARCHAR(16) UNIQUE NOT NULL COMMENT '앱 로그인용 아이디',
     password VARCHAR(16) NOT NULL COMMENT '비밀번호',
-    user_name VARCHAR(100) NOT NULL COMMENT '사용자 이름',
+    user_name VARCHAR(16) NOT NULL COMMENT '사용자 이름',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '계정 생성 일시'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='사용자 계정 정보';
 
@@ -25,7 +25,7 @@ CREATE TABLE user (
 -- ==============================================================
 CREATE TABLE session (
     -- ⭐️ AUTO_INCREMENT를 제거하고 문자열 PK로 설정
-    session_id VARCHAR(50) PRIMARY KEY COMMENT '세션 고유 문자열 ID (예: SID_20260204_a1b2c3)',
+    session_id VARCHAR(20) PRIMARY KEY COMMENT '세션 고유 문자열 ID (예: SID_20260204_a1b2c3)',
     session_name VARCHAR(200) NULL COMMENT '세션 이름',
     invite_code VARCHAR(8) UNIQUE NOT NULL COMMENT '8자리 랜덤 초대 코드',
     expires_at DATETIME NULL COMMENT '세션 만료 일시',
@@ -50,7 +50,6 @@ CREATE TABLE user_session (
 CREATE TABLE video (
     video_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '영상 고유 번호',
     session_session_id VARCHAR(50) NOT NULL COMMENT '영상이 소속된 세션 번호', -- ✅ FK 타입 일치
-    s3_url VARCHAR(300) UNIQUE NOT NULL COMMENT 'S3 저장 주소 (sessionId/fileName)',
     video_name VARCHAR(255) NOT NULL COMMENT '사용자가 설정한 영상 이름',
     upload_status VARCHAR(10) NOT NULL DEFAULT 'PENDING' COMMENT '업로드 상태 (PENDING, PROCESSING, COMPLETED)',
     absolute_start_time BIGINT NOT NULL COMMENT '촬영 시작 절대 시간 (ms)', 
