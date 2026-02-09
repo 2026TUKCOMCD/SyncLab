@@ -3,6 +3,7 @@
 # fetchall()함수로 session_id에 해당하는 모든 동영상을 객체로 받는데, 2차원 배열 형식으로 저장되기 때문에 인덱스 접근 시 [0][1] 식으로 사용
 
 import jwt
+from app.services.ffmpeg_service import ffmpeg_service
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.database.connection import get_db
 from app.models.schemas import ClipData, SavedEditRequest
@@ -68,6 +69,19 @@ def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
         cursor.execute(sql, (json_edit_data, request.session_id, json_edit_data))
 
         db.commit()
+        # request.edit_data가 이미 리스트 형태이므로 이를 서비스에 전달합니다.
+        output_filename = ffmpeg_service.render_project(edit_list, request.session_id)
+
+        # 4. 결과 반환 (성공 시 편집본을 볼 수 있는 주소 포함)
+        return {
+            "status": "success",
+            "message": "편집 데이터 저장 및 영상 렌더링 완료",
+            "video_url": f"/videos/{output_filename}" 
+        }
     except Exception as e:
         print(f"Database Error: {e}")
+        db.rollback() # 에러시 롤벡
         raise HTTPException(status_code=500, detail=str(e))
+    
+    finally:
+        cursor.close()
