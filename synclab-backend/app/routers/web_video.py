@@ -26,17 +26,35 @@ def get_current_session_id(token: str = Depends(oauth2_scheme)):
         raise HTTPException(status_code=401, detail="유효하지 않은 토큰입니다.")
     
 
-# 사용자 session_id에 해당하는 비디오 출력 처리
-@router.get("/list")
-def get_video_list(session_id: int = Depends(get_current_session_id), db = Depends(get_db)):
+@router.get("/sessions")
+def get_user_session(token: str = Depends(oauth2_scheme), db = Depends(get_db)):
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        user_id = payload.get("user_id")
 
-    if session_id is None:
-        return {"videos" : []}
-    
+        cursor = db.cursor(dictionary=True)
+        sql = "SELECT session_session_id FROM user_session WHERE user_user_id = %s"
+        cursor.execute(sql, (user_id,))
+        sessions = cursor.fetchall()
+        return {"sessions":sessions}
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="토큰 인증 실패")
+    except Exception as e:
+        print(f"DB Error: {e}")
+        raise HTTPException(status_code=500, detail="데이터베이스 조회 실패")
+    finally:
+        if 'cursor' in locals():
+            cursor.close()
+
+
+# 사용자 session_id에 해당하는 비디오 출력 처리
+@router.get("/list/{session_id}")
+def get_video_list(session_id: str, db = Depends(get_db)):
+
     cursor = db.cursor(dictionary=True)
 
     try:
-        sql = "SELECT file_name FROM video WHERE session_session_id = %s"
+        sql = "SELECT video_name FROM video WHERE session_session_id = %s"
         cursor.execute(sql, (session_id, ))
         result = cursor.fetchall()
 
@@ -47,8 +65,8 @@ def get_video_list(session_id: int = Depends(get_current_session_id), db = Depen
             video_list.append({
                 "id" : index,
                 "name" : f"CAM {index+1}",
-                "file_name" : row['file_name'],
-                "videoUrl" : f"{base_url}{session_id}/{row['file_name']}"
+                "video_name" : row['video_name'],
+                "videoUrl" : f"{base_url}{row['video_name']}"
             })
         return {"videos" : video_list}
     
