@@ -54,7 +54,7 @@ def get_video_list(session_id: str, db = Depends(get_db)):
     cursor = db.cursor(dictionary=True)
 
     try:
-        sql = "SELECT video_name FROM video WHERE session_session_id = %s"
+        sql = "SELECT * FROM video WHERE session_session_id = %s"
         cursor.execute(sql, (session_id, ))
         result = cursor.fetchall()
 
@@ -66,6 +66,8 @@ def get_video_list(session_id: str, db = Depends(get_db)):
                 "id" : index,
                 "name" : f"CAM {index+1}",
                 "video_name" : row['video_name'],
+                "start_time" : row['absolute_start_time'],
+                "end_time" : row['absolute_end_time'],
                 "videoUrl" : f"{base_url}{row['video_name']}"
             })
         return {"videos" : video_list}
@@ -81,14 +83,14 @@ def get_video_list(session_id: str, db = Depends(get_db)):
 def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
     json_edit_data = json.dumps([clip.dict() for clip in request.edit_data])
 
-    cursor = db.cursor(dictionary=True)
+    cursor = db.cursor(dictionary=True) 
     try:
         sql = "insert into edit (edit_data, session_session_id) values (%s, %s) ON DUPLICATE KEY UPDATE edit_data = %s"
         cursor.execute(sql, (json_edit_data, request.session_id, json_edit_data))
 
         db.commit()
         # request.edit_data가 이미 리스트 형태이므로 이를 서비스에 전달합니다.
-        output_filename = ffmpeg_service.render_project(edit_list, request.session_id)
+        output_filename = ffmpeg_service.render_project(json_edit_data, request.session_id)
 
         # 4. 결과 반환 (성공 시 편집본을 볼 수 있는 주소 포함)
         return {
