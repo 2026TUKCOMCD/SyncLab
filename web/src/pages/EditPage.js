@@ -1,4 +1,4 @@
-import { Scissors, Play, Pause, SkipBack, SkipForward, Save, Plus, Theater, Radius } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Save, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import axios from 'axios'
@@ -25,19 +25,31 @@ function EditPage() {
   const [cameras, setCameras] = useState([]);
   const [sessionList, setSessionList] = useState([]); // 사용자가 참여한 여러 세션 목록을 위한 변수
   const [activeSessionId, setActiveSessionId] = useState(null); // 현재 사용자가 선택한 세션에 대한 변수
-  const [isRendering, setIsRendering] = useState(false);
+
+  // 모든 카메라 중 시작 시간이 가장 빠른 비디오의 시작 시간과 session의 총 영상 길이 찾기
+  const minAbsStart = React.useMemo(() => {
+    if (!cameras || cameras.length === 0) return 0;
+    return Math.min(...cameras.map(c => c.start_time));
+  }, [cameras]);
+  const totalSessionDuration = React.useMemo(() => {
+    if (!cameras || cameras.length === 0) return 180;
+    const maxEnd = Math.max(...cameras.map(c => c.end_time));
+    return (maxEnd - minAbsStart) / 1000;
+  }, [cameras, minAbsStart]);
 
   // 페이지 접속 시 user_id로 Session 불러오기
   useEffect(() => {
     const fetchSessions = async () => {
       const token = localStorage.getItem('accessToken');
       try {
-        const response = await axios.get('https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/web/sessions', { // Token에 들어있는 user_id로 세션 조회 시도
+        const response = await axios.get(`https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/web/sessions`, { // Token에 들어있는 user_id로 세션 조회 시도
           headers: { Authorization: `Bearer ${token}` }
         });
-        setSessionList(response.data.sessions); // session_id가 저장되어 있는 response를 리스트로 생성
-        if (response.data.sessions.length > 0) {
-          setActiveSessionId(response.data.sessions[0].session_session_id); // 배열 중 가장 상위에 있는 session_id로 초기값 설정 -> null 이나 가장 최근에 생성한 session으로 변경 가능할 듯
+        const sessions = response.data?.sessions || [];
+        setSessionList(sessions); // session_id가 저장되어 있는 response를 리스트로 생성
+
+        if (sessions.length > 0) {
+          setActiveSessionId(sessions[0]?.session_session_id); // 배열 중 가장 상위에 있는 session_id로 초기값 설정 -> null 이나 가장 최근에 생성한 session으로 변경 가능할 듯
         }
       }
       catch (error) {
@@ -49,7 +61,7 @@ function EditPage() {
 
   // session으로 반환받은 사용자의 user_session_id로 해당 세션의 동영상 목록을 출력하는 함수
   useEffect(() => {
-    if (!activeSessionId) return;
+    if (activeSessionId === null || activeSessionId === undefined) return;
 
     const fetchVideos = async () => { // fetchVideos 라는 비동기 함수를 작성하고 useEffect() 끝에서 함수 호출하는 방식
       const token = localStorage.getItem('accessToken');
@@ -65,15 +77,16 @@ function EditPage() {
             Authorization: `Bearer ${token}` // Header에 토큰 값 실어서 보내기
           }
         });
-        console.log("서버 응답: ", response.data);
-        setCameras(response.data.videos);
+        const videoData = response.data?.videos || [];
+        setCameras(videoData);
         setSavedClips([]); // 세션 재선택 시 클립 초기화
         setMultiviewCameras([null, null, null, null]); // 세션 재선택 시 멀티뷰 화면 초기화
+        setSelectedSourceCam(null);
       }
       catch (error) {
         console.error('네트워크 에러:', error);
 
-        if (error.response && error.response.status == 401) {
+        if (error.response && error.response.status === 401) {
           alert("인증이 만료되었습니다. 다시 로그인해주세요.");
         }
       }
@@ -96,38 +109,69 @@ function EditPage() {
 
   // 현재 재생 중인 동영상의 시간을 보여주기 위한 함수로 타임라인의 Bar가 이동하거나 숫자 표시
   useEffect(() => {
+    let animationId;
+
     if (isPlaying && selectedSourceCam !== null) {
-      const updateTime = () => {
-        const video = videoRefs.current[selectedSourceCam]; // 프로그램 모니터에 선택된 비디오 가져오기
-        if (video && !video.paused && !video.ended) {
-          setCurrentTime(video.currentTime); // 비디오의 재생 시간을 현재 시간으로 저장
-          animationRef.current = requestAnimationFrame(updateTime);
-          // rAF(requestAnimationFrame) 함수는 브라우저의 주사율을 60fps로 맞춰 렌더링하는 것 
-          // 동영상이 60 프레임으로 재생된다면 1초에 60번 리렌더링하는 것과 같지만 변경부분만 렌더링되므로 부하가 많지 않음.
+      const updateAllSync = () => {
+        const masterVideo = videoRefs.current[selectedSourceCam];
+        const mainCam = cameras.find(c => c.id === selectedSourceCam);
+
+        if (masterVideo && mainCam && !masterVideo.paused) {
+          const actualVideoTime = masterVideo.currentTime;
+          const mainOffset = (Number(mainCam.start_time) - Number(minAbsStart)) / 1000;
+          const calculateMasterTime = actualVideoTime + mainOffset;
+          setCurrentTime(calculateMasterTime);
+
+          multiviewCameras.forEach(cam => {
+            if (!cam || cam.id === selectedSourceCam) return;
+            const v = videoRefs.current[cam.id];
+            if (!v) return;
+
+            const camOffset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
+            const targetTime = calculateMasterTime - camOffset;
+
+            if (targetTime >= 0 && targetTime <= (cam.duration || 10000)) {
+              if (v.paused) v.play().catch(() => { });
+
+              const diff = v.currentTime - targetTime;
+              if (Math.abs(diff) > 0.5) {
+                v.currentTime = targetTime;
+              }
+              else if (Math.abs(diff) > 0.05) {
+                v.playbackRate = diff > 0 ? 0.98 : 1.02;
+              }
+              else {
+                v.playbackRate = 1.0;
+              }
+            }
+          });
+          animationId = requestAnimationFrame(updateAllSync);
         }
       };
-      animationRef.current = requestAnimationFrame(updateTime);
+      animationRef.current = requestAnimationFrame(updateAllSync);
     }
+
     return () => {
-      if (animationRef.current) cancelAnimationFrame(animationRef.current); // 컴포넌트가 언마운트 되거나 재생이 중지되면 루프 중지 -> 메모리 누수 방지
+      if (animationId) cancelAnimationFrame(animationId);
     };
-  }, [isPlaying, selectedSourceCam]); // 이 useEffect의 실행 시점은 Mount, Update로 isPlaying이나 selectedSourceCam 값이 변경될 때 렌더링, 하지만 내부 코드인 requestAnimationFrame 함수로 인해 초당 60번의 랜더링이 이루어짐
+  }, [isPlaying, selectedSourceCam, cameras, minAbsStart, multiviewCameras]); // 이 useEffect의 실행 시점은 Mount, Update로 isPlaying이나 selectedSourceCam 값이 변경될 때 렌더링, 하지만 내부 코드인 requestAnimationFrame 함수로 인해 초당 60번의 랜더링이 이루어짐
 
   // play, pause 버튼 클릭 시 발생하는 이벤트 함수이고 모든 동영상의 재생, 정지를 제어
   const togglePlay = () => {
     if (selectedSourceCam === null) return;
-    const allVideos = Object.values(videoRefs.current).filter(v => v); // Object(객체들 중)에서 videoRefs.current에 있는 비디오를 배열로 가져오고 필터링(실제 비디오만)
+    // const allVideos = Object.values(videoRefs.current).filter(v => v); // Object(객체들 중)에서 videoRefs.current에 있는 비디오를 배열로 가져오고 필터링(실제 비디오만)
+    const mainVideo = videoRefs.current[selectedSourceCam];
     const programVideo = programVideoRef.current; // 선택되어 프로그램 모니터 부분에 나타난 비디오
 
     // 일시 정지 상태일 때 버튼 클릭 시 동시 재생
     if (!isPlaying) {
-      allVideos.forEach(v => v.play().catch(() => { })); // .catch()를 통해 자동 재생 정책 무시
+      if (mainVideo) mainVideo.play().catch(() => { });
       if (programVideo) programVideo.play().catch(() => { });
       setIsPlaying(true);
     }
     // 재생 중일 때 버튼 클릭시 일시 정지
     else {
-      allVideos.forEach(v => v.pause());
+      Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
       if (programVideo) programVideo.pause();
       setIsPlaying(false);
     }
@@ -189,15 +233,34 @@ function EditPage() {
 
   // 타임라인 지점 클릭 시 원하는 시점으로 영상을 점프시키는 함수
   const handleTimelineClick = (e) => {
-    if (selectedSourceCam === null) return;
-    if (isDraggingIn || isDraggingOut) return;            // 클릭이 아닌 드래그일 경우에 리턴하여 점프시키지 않도록 유도
-    const rect = e.currentTarget.getBoundingClientRect(); // 타임라인 막대의 실제 화면상 크기와 위치 값 저장
-    const x = e.clientX - rect.left;                      // 클릭 지점 X값 - 타임라인 막대의 왼쪽 여백 값 = 타임라인 내 클릭 지점 계산
-    const percent = x / rect.width;                       // 타임라인 내 클릭 지점을 타임라인의 너비로 나누어 비율 계산
-    const newTime = percent * duration;                   // 비율 * 영상 길이를 통해 실제 비디오의 시간 계산
-    setCurrentTime(newTime);
-    Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; }); // 모든 동영상을 클릭 시점으로 맞춤
-    if (programVideoRef.current) programVideoRef.current.currentTime = newTime;
+    if (selectedSourceCam === null || !timelineRef.current) return;
+    if (isDraggingIn || isDraggingOut) return;
+
+    const rect = timelineRef.current.getBoundingClientRect();
+    const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
+    const percent = x / rect.width;
+
+    const newMasterTime = percent * totalSessionDuration;
+    setCurrentTime(newMasterTime);
+
+    // 모든 비디오 강제 싱크
+    multiviewCameras.forEach(cam => {
+      if (!cam) return;
+      const v = videoRefs.current[cam.id];
+      if (!v) return;
+
+      const offset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
+      const target = newMasterTime - offset;
+
+      v.currentTime = Math.max(0, target);
+    });
+
+    // 메인 비디오도 싱크
+    if (programVideoRef.current) {
+      const mainCam = cameras.find(c => c.id === selectedSourceCam);
+      const mainOffset = (Number(mainCam.start_time) - Number(minAbsStart)) / 1000;
+      programVideoRef.current.currentTime = Math.max(0, newMasterTime - mainOffset);
+    }
   };
 
   // 편집 시작점과 편집 종료점을 드래그하여 이동시키는 함수, MouseDown -> MouseUp으로 드래그 구현
@@ -315,7 +378,6 @@ function EditPage() {
       alert("저장된 클립이 없습니다. 먼저 클립을 생성해 주세요.");
       return;
     }
-    setIsRendering(true);
     const clipArrays = savedClips.map(clip => ({
       sequence: clip.sequence,
       video_url: clip.video_url,
@@ -325,7 +387,7 @@ function EditPage() {
     }));
 
     const payload = {
-      session_id: localStorage.getItem('user_session_id'),
+      session_id: activeSessionId,
       edit_data: clipArrays
     }
     try {
@@ -338,9 +400,6 @@ function EditPage() {
     catch (error) {
       console.error("저장 실패 : ", error);
     }
-    finally {
-      setIsRendering(false);
-    }
   };
 
   // 1080p 영상 주소를 480p 주소로 변환
@@ -351,6 +410,28 @@ function EditPage() {
       .replace("1080p", "480p")
 
     return proxyUrl;
+  };
+
+  /* 동기화 재생 로직 */
+  const syncVideo = (camId, masterTime) => {
+    const cam = cameras.find(c => c.id === camId);
+    const video = videoRefs.current[camId];
+    if (!cam || !video) return;
+
+    const offset = (cam.start_time - minAbsStart) / 1000; // 초 단위로 변경
+    const targetTime = masterTime - offset;
+
+    if (targetTime < 0) { // 녹화 전일 경우 0초에서 대기
+      video.currentTime = 0;
+    }
+    else if (targetTime > (cam.duration || 0)) { // 녹화 종료 시 마지막 프레임에서 대기
+      video.currentTime = cam.duration;
+    }
+    else { // 성능 최적화 -> 싱크가 0.1초 이상 벌어질 경우 보정
+      if (Math.abs(video.currentTime - targetTime) > 0.1) {
+        video.currentTime = targetTime;
+      }
+    }
   };
   /* 화면 구성 부분 */
   return (
@@ -389,7 +470,7 @@ function EditPage() {
               className="session-select-dropdown"
             >
               <option value="" disabled>목록에서 세션 변경</option>
-              {sessionList.map((session) => (
+              {sessionList?.map((session) => (
                 <option key={session.session_session_id} value={session.session_session_id}>
                   ID: {session.session_session_id}
                 </option>
@@ -493,29 +574,44 @@ function EditPage() {
                     className="grid-slot"
                     onClick={() => handleMultiviewSlotClick(slotIndex)}
                     style={{
+                      position: 'relative',
                       cursor: cam ? 'pointer' : 'default',
                       border: cam && selectedSourceCam === cam.id ? `4px solid ${cam.color}` : '2px solid #4b5563',
                       boxShadow: cam && selectedSourceCam === cam.id ? `0 0 16px 2px ${cam.color}60` : 'none',
+                      backgroundColor: '#000',
+                      overflow: 'hidden',
+                      minHeight: '150px' // 하얀 화면 방지를 위한 최소 높이
                     }}
                   >
                     {cam ? (
                       <>
-                        <video
-                          ref={el => { if (el) videoRefs.current[cam.id] = el; }} // videoRefs에 객체 추가
-                          src={getProxyUrl(cam.videoUrl)}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          muted
-                          playsInline
-                          onLoadedMetadata={(e) => handleVideoLoaded(cam.id, e)}
-                        />
-                        <div className="cam-label" style={{ backgroundColor: cam.color }}>
+                        {/* 동기화 로직: 현재 시간이 비디오 실제 시작 시점보다 전인지 체크 */}
+                        {currentTime < (Number(cam.start_time) - Number(minAbsStart)) / 1000 ? (
+                          <div className="waiting-signal" style={{
+                            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+                            alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.85)',
+                            color: 'white', zIndex: 10
+                          }}>
+                            <div className="spinner"></div>
+                            <span style={{ fontWeight: 'bold' }}>신호 대기 중...</span>
+                            <span style={{ fontSize: '11px', marginTop: '4px', opacity: 0.8 }}>
+                              {Math.max(0, Math.ceil((cam.start_time - (minAbsStart || 0)) / 1000 - currentTime))}초 후 시작
+                            </span>
+                          </div>
+                        ) : (
+                          <video
+                            ref={el => { if (el) videoRefs.current[cam.id] = el; }}
+                            src={getProxyUrl(cam.videoUrl)}
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                            muted
+                            playsInline
+                            onLoadedMetadata={(e) => handleVideoLoaded(cam.id, e)}
+                          />
+                        )}
+
+                        <div className="cam-label" style={{ backgroundColor: cam.color || '#333' }}>
                           {cam.name}
                         </div>
-                        {selectedSourceCam === cam.id && (
-                          <div style={{ position: 'absolute', top: '8px', right: '8px' }}>
-                            <div className="recording-dot" />
-                          </div>
-                        )}
                         <button
                           className="btn-remove-cam"
                           onClick={(e) => {
@@ -699,7 +795,7 @@ function EditPage() {
                     </div>
                   )}
 
-                  <div className="playhead" style={{ left: `${(currentTime / duration) * 100}%` }}>
+                  <div className="playhead" style={{ left: `${(currentTime / totalSessionDuration) * 100}%` }}>
                     <div className="playhead-head" />
                   </div>
                 </div>
