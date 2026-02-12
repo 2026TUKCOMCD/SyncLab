@@ -42,6 +42,10 @@ fun HomeScreen(
     val context = LocalContext.current
     var backPressedTime by remember { mutableLongStateOf(0L) }
 
+    LaunchedEffect(Unit){
+        viewModel.loadHomeData()
+    }
+
     BackHandler {
         val currentTime = System.currentTimeMillis()
         if (currentTime - backPressedTime < 2000) {
@@ -168,7 +172,7 @@ fun HomeScreen(
                     modifier = Modifier.padding(top = 20.dp).fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    if (!viewModel.isGuest) {
+                    if (!viewModel.isGuest && viewModel.currentSession == null) {
                         ActionCard(
                             title = "세션 생성",
                             icon = Icons.Default.Add,
@@ -178,6 +182,7 @@ fun HomeScreen(
                             onClick = { showCreateDialog = true }
                         )
                     }
+                    if(viewModel.currentSession == null){
                     ActionCard(
                         title = "코드 참가",
                         icon = Icons.Default.Keyboard,
@@ -186,6 +191,7 @@ fun HomeScreen(
                         modifier = Modifier.weight(1f),
                         onClick = { showJoinDialog = true }
                     )
+                    }
                 }
             }
 
@@ -273,9 +279,11 @@ fun CurrentSessionCard(viewModel: HomeViewModel) {
             if (session != null) {
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
                     Text("현재 참여 중인 세션", fontSize = 12.sp, color = Color(0xFF64748B))
+                   if(!viewModel.isGuest){
                     IconButton(onClick = { viewModel.clearSession() }, modifier = Modifier.size(24.dp)) {
                         Icon(Icons.Default.ExitToApp, "나가기", tint = Color(0xFFEF4444))
                     }
+                   }
                 }
                 Text("📌 ${session.sessionName}", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {

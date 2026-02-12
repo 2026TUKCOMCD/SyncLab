@@ -9,6 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.data.model.LoginRequest
 import com.tukorea.synclab_mobile.data.model.LoginResponse
+import com.tukorea.synclab_mobile.data.model.SessionJoinRequest
 import com.tukorea.synclab_mobile.utils.AuthManager
 import kotlinx.coroutines.launch
 
@@ -22,7 +23,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
     fun login(
         userId: String,
         userPw: String,
-        onSuccess: (LoginResponse) -> Unit, // 👈 빈 괄호()에서 LoginResponse로 변경!
+        onSuccess: (LoginResponse) -> Unit,
         onError: (String) -> Unit
     ) {
         if (userId.isBlank() || userPw.isBlank()) {
@@ -40,8 +41,6 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     val loginBody = response.body()
                     if (loginBody?.status == "success" && loginBody != null) {
                         authManager.saveToken(loginBody.accessToken)
-
-
                         onSuccess(loginBody)
                     } else {
                         onError("아이디 또는 비밀번호가 올바르지 않습니다.")
@@ -55,6 +54,40 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 onError("서버와의 연결이 원활하지 않습니다: ${e.localizedMessage}")
+            } finally {
+                isProcessing = false
+            }
+        }
+    }
+
+    fun guestLogin(
+        inviteCode: String,
+        onSuccess: () -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (inviteCode.length != 8) {
+            onError("8자리 초대 코드를 정확히 입력해주세요.")
+            return
+        }
+        isProcessing = true
+        viewModelScope.launch {
+            try {
+
+                val request = SessionJoinRequest(inviteCode = inviteCode)
+                val response = NetworkClient.homeService.joinSession(request)
+
+                if (response.status == "success") {
+                    response.accessToken?.let { token ->
+                        authManager.clearAuthData()
+                        authManager.saveToken(token)
+                    }
+                    onSuccess()
+                } else {
+                    onError("유효하지 않거나 만료된 초대 코드입니다.")
+                }
+
+            } catch (e: Exception) {
+                onError("연결 실패: ${e.localizedMessage}")
             } finally {
                 isProcessing = false
             }

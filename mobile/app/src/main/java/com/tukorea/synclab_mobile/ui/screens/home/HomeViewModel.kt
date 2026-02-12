@@ -24,8 +24,10 @@ class HomeViewModel : ViewModel() {
     var currentInviteCode by mutableStateOf("")
     var expiresIn by mutableIntStateOf(0)
 
+    var errorMessage by mutableStateOf<String?>(null)
+
     init {
-        loadHomeData()
+
     }
 
     fun updateUserInfo(loginResponse: LoginResponse) {
@@ -39,6 +41,7 @@ class HomeViewModel : ViewModel() {
                 sessionName = "진행 중인 세션"
             )
         }
+        loadHomeData()
         Log.d("HomeViewModel", "✅ 로그인 정보 업데이트 완료: $userName, 세션: ${loginResponse.currentSessionId}")
     }
 
@@ -49,7 +52,6 @@ class HomeViewModel : ViewModel() {
 
                 response.userName?.let {
                     this@HomeViewModel.userName = it
-                    this@HomeViewModel.isGuest = false
                 }
                 response.userId?.let {
                     this@HomeViewModel.userEmail = "$it@synclab.com"
@@ -100,10 +102,21 @@ class HomeViewModel : ViewModel() {
     private fun joinSessionByInviteCode(inviteCode: String) {
         viewModelScope.launch {
             repository.joinSession(inviteCode).onSuccess { response ->
-                currentSession = response.session
-                refreshVideoStatus()
-                loadHomeData()
+
+                if(response.status == "success" && response.session != null) {
+                    currentSession = response.session
+
+                    if (isGuest) {
+                        refreshVideoStatus()
+                    } else {
+                        loadHomeData()
+                    }
+                }else{
+                    errorMessage = "초대 코드가 올바르지 않습니다."
+                    Log.e("HomeViewModel", "세션 참가 실패: ${response.status}")
+                }
             }.onFailure { e ->
+                errorMessage = "네트워크 오류가 발생했습니다."
                 Log.e("HomeViewModel", "세션 참가 실패: ${e.message}")
             }
         }
@@ -133,6 +146,15 @@ class HomeViewModel : ViewModel() {
         isGuest = true
         userName = "게스트"
         userEmail = "로그인이 필요합니다"
+        sessionHistory = emptyList()
         clearSession()
+    }
+    fun prepareGuestMode() {
+        isGuest = true
+        currentSession = null
+        recentVideos = emptyList()
+        sessionHistory = emptyList()
+        userName = "게스트"
+        userEmail = "로그인이 필요합니다"
     }
 }

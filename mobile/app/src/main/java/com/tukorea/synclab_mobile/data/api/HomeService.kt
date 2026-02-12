@@ -15,7 +15,7 @@ interface HomeService {
     suspend fun createSession(@Body request: SessionCreateRequest): SessionResponse
 
     @POST("api/mobile/session/join")
-    suspend fun joinSession(@Body request: SessionJoinRequest): SessionResponse
+    suspend fun joinSession(@Body request: SessionJoinRequest): SessionJoinResponse
 
     @GET("api/mobile/session/verify-code/{code}")
     suspend fun verifyTempCode(@Path("code") code: String): VerifyCodeResponse

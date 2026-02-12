@@ -51,3 +51,10 @@ data class SessionCreateRequest(
 data class SessionJoinRequest(
     @SerializedName("invite_code") val inviteCode: String, // 세션 참가는 invite_code를 사용
 )
+
+data class SessionJoinResponse(
+    val status: String,
+    @SerializedName("access_token") val accessToken: String?, 
+    @SerializedName("session_id") val sessionId: String?,
+    val session: SessionInfo
+)

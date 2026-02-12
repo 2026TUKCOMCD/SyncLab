@@ -40,7 +40,7 @@ class HomeRepository {
         }
     }
 
-    suspend fun joinSession(inviteCode: String): Result<SessionResponse> {
+    suspend fun joinSession(inviteCode: String): Result<SessionJoinResponse> {
         return withContext(Dispatchers.IO) {
             try {
                 val request = SessionJoinRequest(inviteCode = inviteCode)

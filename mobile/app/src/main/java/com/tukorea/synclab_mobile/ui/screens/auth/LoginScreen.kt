@@ -17,18 +17,21 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.tukorea.synclab_mobile.R
 import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.data.model.LoginRequest
 import com.tukorea.synclab_mobile.data.model.LoginResponse
 import com.tukorea.synclab_mobile.utils.AuthManager
+import com.tukorea.synclab_mobile.ui.screens.auth.LoginViewModel
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     onLoginSuccess: (LoginResponse) -> Unit,
-    onGuestLogin: (String) -> Unit
+    onGuestLogin: (String) -> Unit,
+    viewModel: LoginViewModel = viewModel()
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -57,20 +60,37 @@ fun LoginScreen(
                         },
                         label = { Text("8자리 초대 코드") },
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+                        enabled = !viewModel.isProcessing
                     )
                 }
             },
             confirmButton = {
                 Button(
-                    enabled = inviteCodeInput.length == 8,
+                    enabled = inviteCodeInput.length == 8 && !viewModel.isProcessing,
                     onClick = {
-                        authManager.clearAuthData()
-
-                        onGuestLogin(inviteCodeInput)
-                        showGuestDialog = false
+                        viewModel.guestLogin(
+                            inviteCode = inviteCodeInput,
+                            onSuccess = {
+                                onGuestLogin(inviteCodeInput)
+                                showGuestDialog=false
+                            },
+                            onError = {errorMsg ->
+                                Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                            }
+                        )
                     }
-                ) { Text("입장하기") }
+                ) {
+                    if(viewModel.isProcessing){
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    }else{
+                    Text("입장하기")
+                }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showGuestDialog = false }) { Text("취소") }
