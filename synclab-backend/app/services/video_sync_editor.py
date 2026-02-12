@@ -1,339 +1,110 @@
 #!/usr/bin/env python3
-"""
-영상 동기화 및 편집 시스템
-- 여러 영상을 가장 긴 영상 기준으로 동기화
-- JSON 데이터를 기반으로 영상 편집 및 병합
-"""
-
 import json
 import subprocess
 import os
 from datetime import datetime
-from typing import List, Dict, Optional
 from pathlib import Path
 
-
-class VideoSyncEditor:
+class VideoEditServer:
     def __init__(self, output_dir: str = "./output"):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.temp_dir = self.output_dir / "temp"
         self.temp_dir.mkdir(parents=True, exist_ok=True)
-    
-    def get_video_metadata(self, video_path: str) -> Dict:
+
+    def cut_and_standardize(self, video_url: str, start: float, duration: float, output_path: str):
         """
-        ffprobe를 사용하여 영상의 메타데이터 추출
+        웹의 정보를 바탕으로 자르기 + 규격 통일(싱크 방지 핵심)
         """
-        cmd = [
-            'ffprobe',
-            '-v', 'quiet',
-            '-print_format', 'json',
-            '-show_format',
-            '-show_streams',
-            video_path
-        ]
-        
-        try:
-            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-            metadata = json.loads(result.stdout)
-            
-            # 비디오 스트림 찾기
-            video_stream = next(
-                (s for s in metadata['streams'] if s['codec_type'] == 'video'),
-                None
-            )
-            
-            if not video_stream:
-                raise ValueError(f"비디오 스트림을 찾을 수 없습니다: {video_path}")
-            
-            duration = float(metadata['format']['duration'])
-            creation_time = metadata['format'].get('tags', {}).get('creation_time', None)
-            
-            return {
-                'duration': duration,
-                'width': int(video_stream['width']),
-                'height': int(video_stream['height']),
-                'fps': eval(video_stream['r_frame_rate']),
-                'creation_time': creation_time,
-                'codec': video_stream['codec_name']
-            }
-        except subprocess.CalledProcessError as e:
-            raise Exception(f"메타데이터 추출 실패: {video_path}\n{e.stderr}")
-    
-    def find_longest_video(self, video_urls: List[str]) -> Dict:
-        """
-        가장 긴 영상 찾기 (동기화 기준)
-        """
-        longest = None
-        longest_duration = 0
-        
-        for url in video_urls:
-            metadata = self.get_video_metadata(url)
-            if metadata['duration'] > longest_duration:
-                longest_duration = metadata['duration']
-                longest = {
-                    'url': url,
-                    'metadata': metadata
-                }
-        
-        return longest
-    
-    def calculate_sync_offset(self, base_time: str, target_time: str) -> float:
-        """
-        두 영상 간의 시간 차이 계산 (동기화 오프셋)
-        creation_time 기준으로 계산
-        """
-        if not base_time or not target_time:
-            return 0.0
-        
-        try:
-            base_dt = datetime.fromisoformat(base_time.replace('Z', '+00:00'))
-            target_dt = datetime.fromisoformat(target_time.replace('Z', '+00:00'))
-            offset = (target_dt - base_dt).total_seconds()
-            return offset
-        except Exception as e:
-            print(f"Warning: 시간 동기화 계산 실패 - {e}")
-            return 0.0
-    
-    def cut_video_segment(self, video_url: str, start_time: float, end_time: float, 
-                          output_path: str, sync_offset: float = 0.0) -> str:
-        """
-        영상의 특정 구간 자르기 (동기화 오프셋 적용)
-        """
-        # 동기화 오프셋 적용
-        adjusted_start = max(0, start_time + sync_offset)
-        adjusted_end = end_time + sync_offset
-        duration = adjusted_end - adjusted_start
-        
         cmd = [
             'ffmpeg',
-            '-ss', str(adjusted_start),
-            '-i', video_url,
+            '-ss', str(start),        # 입력 파일 앞에서 찾기 (빠름)
             '-t', str(duration),
+            '-i', video_url,
+            # 모든 클립을 동일한 해상도, 프레임레이트, 오디오 샘플링으로 강제 변환
+            # 이렇게 해야 합쳤을 때 소리 밀림이 없습니다.
+            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30',
             '-c:v', 'libx264',
-            '-preset', 'medium',
+            '-preset', 'ultrafast',   # 처리 속도 우선
             '-crf', '23',
             '-c:a', 'aac',
-            '-b:a', '128k',
+            '-ar', '44100',           # 오디오 샘플링 레이트 고정
+            '-ac', '2',               # 스테레오 고정
             '-y',
             output_path
         ]
         
         try:
             subprocess.run(cmd, check=True, capture_output=True)
-            return output_path
         except subprocess.CalledProcessError as e:
-            raise Exception(f"영상 자르기 실패: {video_url}\n{e.stderr.decode()}")
-    
-    def create_concat_file(self, video_segments: List[str], concat_file_path: str):
+            raise Exception(f"FFmpeg Error: {e.stderr.decode()}")
+
+    def merge_segments(self, segments: list, output_path: str):
         """
-        ffmpeg concat을 위한 파일 리스트 생성
-        """
-        with open(concat_file_path, 'w') as f:
-            for segment in video_segments:
-                # 경로를 절대 경로로 변환
-                abs_path = os.path.abspath(segment)
-                f.write(f"file '{abs_path}'\n")
-    
-    def merge_videos(self, video_segments: List[str], output_path: str) -> str:
-        """
-        여러 영상 세그먼트를 하나로 병합
+        규격이 통일된 세그먼트들을 손실 없이 합치기
         """
         concat_file = self.temp_dir / "concat_list.txt"
-        self.create_concat_file(video_segments, str(concat_file))
-        
+        with open(concat_file, 'w') as f:
+            for seg in segments:
+                f.write(f"file '{os.path.abspath(seg)}'\n")
+
         cmd = [
             'ffmpeg',
             '-f', 'concat',
             '-safe', '0',
             '-i', str(concat_file),
-            '-c', 'copy',
+            '-c', 'copy',             # 이미 위에서 규격을 맞춰서 'copy'만 해도 싱크가 맞음
             '-y',
             output_path
         ]
+        subprocess.run(cmd, check=True)
+
+    def process_request(self, db_data: dict):
+        # 1. 시퀀스 순으로 정렬
+        sorted_edits = sorted(db_data['edit_data'], key=lambda x: x['sequence'])
         
-        try:
-            subprocess.run(cmd, check=True, capture_output=True)
-            return output_path
-        except subprocess.CalledProcessError as e:
-            # copy codec이 실패하면 re-encode 시도
-            print("Warning: codec copy 실패, re-encoding 시도...")
-            cmd = [
-                'ffmpeg',
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', str(concat_file),
-                '-c:v', 'libx264',
-                '-preset', 'medium',
-                '-crf', '23',
-                '-c:a', 'aac',
-                '-b:a', '128k',
-                '-y',
-                output_path
-            ]
-            subprocess.run(cmd, check=True, capture_output=True)
-            return output_path
-    
-    def process_edit_sequence(self, edit_data: List[Dict], 
-                             longest_video_info: Dict) -> str:
-        """
-        편집 시퀀스 처리 (JSON 데이터 기반)
-        
-        Args:
-            edit_data: 편집 정보 리스트
-                [
-                    {
-                        "sequence": 1,
-                        "video_url": "/path/to/video1.mp4",
-                        "start_seek": 0,
-                        "end_seek": 15,
-                        "duration": 15
-                    },
-                    ...
-                ]
-            longest_video_info: 가장 긴 영상의 정보 (동기화 기준)
-        """
-        # sequence 순서로 정렬
-        sorted_edits = sorted(edit_data, key=lambda x: int(x['sequence']))
-        
-        # 각 세그먼트 자르기
-        segments = []
-        base_creation_time = longest_video_info['metadata'].get('creation_time')
-        
+        segment_paths = []
+        print(f"--- 편집 시작: 세션 {db_data['session_id']} ---")
+
+        # 2. 각 클립 가공
         for i, edit in enumerate(sorted_edits):
-            video_url = edit['video_url']
-            start_time = float(edit['start_seek'])
-            end_time = float(edit['end_seek'])
+            seg_name = f"seg_{i:03d}.mp4"
+            seg_path = self.temp_dir / seg_name
             
-            # 동기화 오프셋 계산
-            video_metadata = self.get_video_metadata(video_url)
-            target_creation_time = video_metadata.get('creation_time')
-            sync_offset = self.calculate_sync_offset(base_creation_time, target_creation_time)
+            print(f"[{edit['sequence']}] 자르는 중: {edit['video_url']} ({edit['start_seek']}s ~)")
             
-            # 세그먼트 파일명
-            segment_path = self.temp_dir / f"segment_{i+1:03d}.mp4"
-            
-            print(f"처리 중: Sequence {edit['sequence']} - {video_url}")
-            print(f"  구간: {start_time}s ~ {end_time}s (동기화 오프셋: {sync_offset:.2f}s)")
-            
-            # 영상 자르기
-            self.cut_video_segment(
-                video_url, 
-                start_time, 
-                end_time, 
-                str(segment_path),
-                sync_offset
+            self.cut_and_standardize(
+                edit['video_url'],
+                float(edit['start_seek']),
+                float(edit['duration']),
+                str(seg_path)
             )
-            segments.append(str(segment_path))
+            segment_paths.append(str(seg_path))
+
+        # 3. 최종 병합
+        final_name = f"final_{datetime.now().strftime('%Y%m%d_%H%M%S')}.mp4"
+        final_path = self.output_dir / final_name
         
-        # 최종 출력 파일명
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        final_output = self.output_dir / f"final_video_{timestamp}.mp4"
+        print("\n모든 클립 병합 중...")
+        self.merge_segments(segment_paths, str(final_path))
         
-        print(f"\n세그먼트 병합 중...")
-        # 세그먼트 병합
-        output_video = self.merge_videos(segments, str(final_output))
+        # 4. 정리 (선택 사항)
+        # self.cleanup()
         
-        print(f"\n✓ 완료! 출력 파일: {output_video}")
-        return output_video
-    
-    def cleanup_temp_files(self):
-        """
-        임시 파일 정리
-        """
-        import shutil
-        if self.temp_dir.exists():
-            shutil.rmtree(self.temp_dir)
-            self.temp_dir.mkdir(parents=True, exist_ok=True)
+        return str(final_path)
 
-
-def process_from_database(db_data: Dict) -> str:
-    """
-    데이터베이스에서 받은 데이터 처리 (프론트엔드 형식)
-    
-    Args:
-        db_data: {
-            "session_id": "session_abc123",
-            "edit_data": [
-                {
-                    "sequence": 1,
-                    "video_url": "https://bucket.s3.amazonaws.com/video1.mp4",
-                    "start_seek": 0,
-                    "end_seek": 15,
-                    "duration": 15
-                },
-                ...
-            ]
-        }
-    """
-    editor = VideoSyncEditor()
-    
-    # edit_data에서 사용되는 모든 고유한 영상 URL 추출
-    edit_data = db_data.get('edit_data', [])
-    if not edit_data:
-        raise ValueError("edit_data가 비어있습니다.")
-    
-    unique_video_urls = list(set([edit['video_url'] for edit in edit_data]))
-    
-    print(f"세션 ID: {db_data.get('session_id', 'N/A')}")
-    print(f"편집할 영상 수: {len(unique_video_urls)}")
-    print(f"총 클립 수: {len(edit_data)}")
-    
-    # 가장 긴 영상 찾기 (동기화 기준)
-    print("\n가장 긴 영상 찾는 중...")
-    longest_video = editor.find_longest_video(unique_video_urls)
-    
-    print(f"\n동기화 기준 영상:")
-    print(f"  URL: {longest_video['url']}")
-    print(f"  길이: {longest_video['metadata']['duration']:.2f}초")
-    print(f"  해상도: {longest_video['metadata']['width']}x{longest_video['metadata']['height']}")
-    print(f"  생성 시간: {longest_video['metadata'].get('creation_time', 'N/A')}")
-    print()
-    
-    # 편집 시퀀스 처리
-    output_video = editor.process_edit_sequence(edit_data, longest_video)
-    
-    # 임시 파일 정리 (옵션)
-    # editor.cleanup_temp_files()
-    
-    return output_video
-
-
-# 사용 예시
+# 실행 예시
 if __name__ == "__main__":
-    # 프론트엔드에서 받는 JSON 데이터 형식
-    sample_db_data = {
-        "session_id": "session_abc123",
+    # 웹에서 넘어온 데이터 예시 (동기화 오프셋이 이미 반영된 start_seek)
+    web_data = {
+        "session_id": "sports_edit_001",
         "edit_data": [
-            {
-                "sequence": 1,
-                "video_url": "/path/to/video1.mp4",
-                "start_seek": 0,
-                "end_seek": 15,
-                "duration": 15
-            },
-            {
-                "sequence": 2,
-                "video_url": "/path/to/video2.mp4",
-                "start_seek": 10,
-                "end_seek": 25,
-                "duration": 15
-            },
-            {
-                "sequence": 3,
-                "video_url": "/path/to/video1.mp4",
-                "start_seek": 30,
-                "end_seek": 45,
-                "duration": 15
-            }
+            {"sequence": 1, "video_url": "cam1.mp4", "start_seek": 10.5, "duration": 5.0},
+            {"sequence": 2, "video_url": "cam2.mp4", "start_seek": 8.5, "duration": 3.0}, # cam2가 2초 늦게 시작했다면 웹에서 이미 2초 뺀 값을 보냄
+            {"sequence": 3, "video_url": "cam1.mp4", "start_seek": 25.0, "duration": 4.0}
         ]
     }
-    
-    try:
-        # 처리 실행
-        output_file = process_from_database(sample_db_data)
-        print(f"\n최종 영상이 생성되었습니다: {output_file}")
-    except Exception as e:
-        print(f"오류 발생: {e}")
-        import traceback
-        traceback.print_exc()
+
+    editor = VideoEditServer()
+    result = editor.process_request(web_data)
+    print(f"\n성공! 결과 파일: {result}")

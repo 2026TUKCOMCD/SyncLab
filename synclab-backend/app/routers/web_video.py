@@ -3,7 +3,7 @@
 # fetchall()함수로 session_id에 해당하는 모든 동영상을 객체로 받는데, 2차원 배열 형식으로 저장되기 때문에 인덱스 접근 시 [0][1] 식으로 사용
 
 import jwt
-from app.services.ffmpeg_service import ffmpeg_service
+from app.services.video_sync_editor import VideoEditServer
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.database.connection import get_db
 from app.models.schemas import ClipData, SavedEditRequest
@@ -13,6 +13,9 @@ import json
 
 print(f"비디오 파일 키: {SECRET_KEY}") # 서버 로그 확인
 router = APIRouter(prefix="/api/web")
+
+# 26.2.12. 추가. 서비스 인스턴스를 생성합니다. (main.py의 마운트 경로인 'exports'와 일치시킴)
+video_editor = VideoEditServer(output_dir="./exports")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "/api/web/login") # 토큰이 있는 URL 지정 -> 토큰 획득
 def get_current_session_id(token: str = Depends(oauth2_scheme)):
@@ -81,6 +84,8 @@ def get_video_list(session_id: str, db = Depends(get_db)):
 # 사용자가 프로젝트 생성 버튼 클릭 시 편집정보(EDL) 전송 처리 (현재 DB 저장만 구현된 상태)
 @router.post("/save_edit_data")
 def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
+    #26.2.12. 수정.  pydantic 모델 객체를 파이썬의 기본 딕셔너리로 변환하기 위해 존재.
+    edit_list = [clip.dict() for clip in request.edit_data]
     json_edit_data = json.dumps([clip.dict() for clip in request.edit_data])
 
     cursor = db.cursor(dictionary=True) 
@@ -90,13 +95,26 @@ def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
 
         db.commit()
         # request.edit_data가 이미 리스트 형태이므로 이를 서비스에 전달합니다.
-        output_filename = ffmpeg_service.render_project(json_edit_data, request.session_id)
+     #   output_filename = ffmpeg_service.render_project(json_edit_data, request.session_id)
+
+         # 3. 26/2/12  새로운 서비스 호출
+        # VideoSyncEditor는 dict 리스트를 받으므로 edit_list를 payload에 담아 전달합니다.
+        payload = {
+            "session_id": request.session_id,
+            "edit_data": edit_list
+        }
+        
+        # 실제 영상 파일이 생성되고 경로가 반환됩니다. (이부분이 실질적으로 메서드 실행 파트!)
+        final_output_path = video_editor.process_request(payload)
+        # 파일 경로에서 이름만 추출 (예: final_20260212_123456.mp4)
+        from pathlib import Path
+        output_filename = Path(final_output_path).name
 
         # 4. 결과 반환 (성공 시 편집본을 볼 수 있는 주소 포함)
         return {
             "status": "success",
             "message": "편집 데이터 저장 및 영상 렌더링 완료",
-            "video_url": f"/videos/{output_filename}" 
+            "video_url": f"/videos/{output_filename}"  #main.py의 마운트 경로와 일치시킴
         }
     except Exception as e:
         print(f"Database Error: {e}")
