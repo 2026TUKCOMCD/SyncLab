@@ -35,15 +35,16 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
         viewModelScope.launch {
             try {
-                authManager.clearAuthData()
-                NetworkClient.resetClient()
                 val response = NetworkClient.authService.login(LoginRequest(userId, userPw))
 
                 if (response.isSuccessful) {
                     val loginBody = response.body()
-                    if (loginBody?.status == "success" && loginBody != null) {
+                    if (loginBody?.status == "success") {
+
+                        authManager.clearAuthData()
                         authManager.saveToken(loginBody.accessToken)
                         NetworkClient.resetClient()
+
                         onSuccess(loginBody)
                     } else {
                         onError("아이디 또는 비밀번호가 올바르지 않습니다.")
@@ -83,6 +84,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
                     response.accessToken?.let { token ->
                         authManager.clearAuthData()
                         authManager.saveToken(token)
+                        NetworkClient.resetClient()
                     }
                     onSuccess()
                 } else {
