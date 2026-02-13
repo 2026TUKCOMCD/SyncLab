@@ -123,3 +123,24 @@ def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
     
     finally:
         cursor.close()
+
+
+        #26.2.13. 추가 - 서버 조회용 api, 즉 ( 불러오기시) 데베에서 꺼내서 편집할수 있게 만든 코드.
+     
+"""
+@router.get("/get_saved_edit/{session_id}")
+def get_saved_edit(session_id: str, db = Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        # DB에서 해당 세션의 편집 데이터 조회
+        sql = "SELECT edit_data FROM edit WHERE session_session_id = %s"
+        cursor.execute(sql, (session_id,))
+        result = cursor.fetchone()
+        
+        if result and result['edit_data']:
+            # 저장된 문자열을 다시 리스트 객체로 변환하여 반환
+            return {"status": "success", "edit_data": json.loads(result['edit_data'])}
+        return {"status": "empty", "message": "저장된 데이터가 없습니다."}
+    finally:
+        cursor.close() 
+        """
