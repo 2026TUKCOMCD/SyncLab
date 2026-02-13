@@ -9,6 +9,7 @@ from app.database.connection import get_db
 from app.models.schemas import ClipData, SavedEditRequest
 from fastapi.security import OAuth2PasswordBearer # HTTP 헤더에서 토큰을 추출하고 검증하는 보안 도구
 from app.routers.web_auth import ALGORITHM, SECRET_KEY # 로그인에서 사용했던 토큰과 알고리즘 HS256
+from pathlib import Path
 import json
 
 print(f"비디오 파일 키: {SECRET_KEY}") # 서버 로그 확인
@@ -95,9 +96,9 @@ def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
 
         db.commit()
         # request.edit_data가 이미 리스트 형태이므로 이를 서비스에 전달합니다.
-     #   output_filename = ffmpeg_service.render_project(json_edit_data, request.session_id)
+        #   output_filename = ffmpeg_service.render_project(json_edit_data, request.session_id)
 
-         # 3. 26/2/12  새로운 서비스 호출
+        # 3. 26/2/12  새로운 서비스 호출
         # VideoSyncEditor는 dict 리스트를 받으므로 edit_list를 payload에 담아 전달합니다.
         payload = {
             "session_id": request.session_id,
@@ -107,7 +108,6 @@ def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
         # 실제 영상 파일이 생성되고 경로가 반환됩니다. (이부분이 실질적으로 메서드 실행 파트!)
         final_output_path = video_editor.process_request(payload)
         # 파일 경로에서 이름만 추출 (예: final_20260212_123456.mp4)
-        from pathlib import Path
         output_filename = Path(final_output_path).name
 
         # 4. 결과 반환 (성공 시 편집본을 볼 수 있는 주소 포함)

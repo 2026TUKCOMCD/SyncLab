@@ -110,7 +110,8 @@ function EditPage() {
   // 현재 재생 중인 동영상의 시간을 보여주기 위한 함수로 타임라인의 Bar가 이동하거나 숫자 표시
   useEffect(() => {
     let animationId;
-
+  
+    /* 동기화 재생 로직 */
     if (isPlaying && selectedSourceCam !== null) {
       const updateAllSync = () => {
         const masterVideo = videoRefs.current[selectedSourceCam];
@@ -335,17 +336,23 @@ function EditPage() {
       alert('선택한 구간이 이미 추가된 클립과 겹칩니다. 다른 구간을 선택해주세요.');
       return;
     }
-
     const currentCamData = cameras.find(c => c.id === selectedSourceCam);
+
+    // 영상 마다 오차 계산 후 보정
+    const camOffset = (Number(currentCamData.start_time) - Number(minAbsStart)) / 1000;
+    const relativeStartSeek = Math.max(0, inPoint - camOffset); // 시작 상대값
+    const relativeEndSeek = Math.max(0, outPoint - camOffset); // 종료 상대값
 
     const newClip = { // 클립 정보 값 -> 편집 정보로 넘길 때 사용할 예정
       id: Date.now(),
       sequence: 0,
       video_url: currentCamData?.videoUrl || "",
       cam: selectedSourceCam,
-      start_seek: inPoint,
-      end_seek: outPoint,
+      start_seek: relativeStartSeek,
+      end_seek: relativeEndSeek,
       duration: outPoint - inPoint,
+      global_in : inPoint,
+      global_out: outPoint
     };
     const sortedClips = [...savedClips, newClip].sort((a, b) => a.start_seek - b.start_seek); // 저장된 클립들을 시작 시점과 종료 시점으로 정렬 -> 사용자가 클립의 순서를 꼬아놔도 영상의 진행 순서대로 정렬됨
     const updatedClips = sortedClips.map((clip, index) => ({
@@ -372,7 +379,7 @@ function EditPage() {
 
   const totalClipDuration = savedClips.reduce((sum, clip) => sum + clip.duration, 0);
 
-  // 프로젝트 생성 
+  // 영상 생성 
   const handleSavedClips = async () => {
     if (savedClips.length === 0) {
       alert("저장된 클립이 없습니다. 먼저 클립을 생성해 주세요.");
@@ -412,27 +419,6 @@ function EditPage() {
     return proxyUrl;
   };
 
-  /* 동기화 재생 로직 */
-  const syncVideo = (camId, masterTime) => {
-    const cam = cameras.find(c => c.id === camId);
-    const video = videoRefs.current[camId];
-    if (!cam || !video) return;
-
-    const offset = (cam.start_time - minAbsStart) / 1000; // 초 단위로 변경
-    const targetTime = masterTime - offset;
-
-    if (targetTime < 0) { // 녹화 전일 경우 0초에서 대기
-      video.currentTime = 0;
-    }
-    else if (targetTime > (cam.duration || 0)) { // 녹화 종료 시 마지막 프레임에서 대기
-      video.currentTime = cam.duration;
-    }
-    else { // 성능 최적화 -> 싱크가 0.1초 이상 벌어질 경우 보정
-      if (Math.abs(video.currentTime - targetTime) > 0.1) {
-        video.currentTime = targetTime;
-      }
-    }
-  };
   /* 화면 구성 부분 */
   return (
     <div className="edit-page-container">
@@ -595,7 +581,7 @@ function EditPage() {
                             <div className="spinner"></div>
                             <span style={{ fontWeight: 'bold' }}>신호 대기 중...</span>
                             <span style={{ fontSize: '11px', marginTop: '4px', opacity: 0.8 }}>
-                              {Math.max(0, Math.ceil((cam.start_time - (minAbsStart || 0)) / 1000 - currentTime))}초 후 시작
+                              {Math.max(0, Math.ceil((cam.start_time - Number(minAbsStart || 0)) / 1000 - currentTime))}초 후 시작
                             </span>
                           </div>
                         ) : (
@@ -751,8 +737,8 @@ function EditPage() {
                       key={clip.id}
                       className="clip-region"
                       style={{
-                        left: `${(clip.start_seek / duration) * 100}%`,
-                        width: `${((clip.end_seek - clip.start_seek) / duration) * 100}%`,
+                        left: `${(clip.global_in / duration) * 100}%`,
+                        width: `${((clip.global_out - clip.global_in) / duration) * 100}%`,
                       }}
                     >
                       {cameras[clip.cam].name}
@@ -816,7 +802,10 @@ function EditPage() {
                         key={clip.id}
                         className="clip-item"
                         style={{
-                          width: `${Math.max(clip.duration * 3, 60)}px`,
+                          width: `${(clip.duration / totalSessionDuration) * 100}%`,
+                          left: `${(clip.global_in / totalSessionDuration) * 100}%`,
+                          position: 'absolute',
+                          minWidth:'2px',
                           backgroundColor: cameras[clip.cam].color
                         }}
                       >
