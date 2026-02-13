@@ -18,6 +18,7 @@ object NetworkClient {
     private val BASE_URL = BuildConfig.BASE_URL
 
     private var authManager: AuthManager? = null
+    private var retrofitInstance: Retrofit? = null
 
     fun init(context: Context) {
         if (authManager == null) {
@@ -25,9 +26,16 @@ object NetworkClient {
         }
     }
 
+    fun resetClient(){
+        retrofitInstance = null
+    }
+
     private val authInterceptor = Interceptor { chain ->
         val originalRequest = chain.request()
 
+        if (originalRequest.header("No-Authentication") != null) {
+            return@Interceptor chain.proceed(originalRequest)
+        }
         val token = authManager?.getToken()
 
         val newRequest = if (!token.isNullOrEmpty()) {
@@ -45,7 +53,7 @@ object NetworkClient {
     }
 
     // Client 설정
-    private val client: OkHttpClient by lazy {
+    /*private val client: OkHttpClient by lazy {
         OkHttpClient.Builder()
             .addInterceptor(authInterceptor)
             .addInterceptor(loggingInterceptor)
@@ -61,10 +69,33 @@ object NetworkClient {
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()
+    }*/
+
+    private fun getRetrofit(): Retrofit {
+        return retrofitInstance ?: synchronized(this) {
+            val client = OkHttpClient.Builder()
+                .addInterceptor(authInterceptor)
+                .addInterceptor(loggingInterceptor)
+                .connectTimeout(30, TimeUnit.SECONDS)
+                .build()
+
+            val newRetrofit = Retrofit.Builder()
+                .baseUrl(BASE_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build()
+
+            retrofitInstance = newRetrofit
+            newRetrofit
+        }
     }
 
     // 서비스 인터페이스
-    val service: VideoUploadService by lazy { retrofit.create(VideoUploadService::class.java) }
+    /*val service: VideoUploadService by lazy { retrofit.create(VideoUploadService::class.java) }
     val homeService: HomeService by lazy { retrofit.create(HomeService::class.java) }
     val authService: AuthService by lazy { retrofit.create(AuthService::class.java) }
+*/
+    val service: VideoUploadService get() = getRetrofit().create(VideoUploadService::class.java)
+    val homeService: HomeService get() = getRetrofit().create(HomeService::class.java)
+    val authService: AuthService get() = getRetrofit().create(AuthService::class.java)
 }
