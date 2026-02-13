@@ -750,7 +750,7 @@ body {
 .track-bg {
   position: absolute;
   inset: 0;
-  opacity: 0.5;
+  opacity: 1;
 }
 
 .clip-region {
@@ -763,7 +763,7 @@ body {
   align-items: center;
   justify-content: center;
   font-size: 12px;
-  color: #d1d5db;
+  color: #000000;
 }
 
 .selection-region {
@@ -801,7 +801,7 @@ body {
   top: 0;
   bottom: 0;
   width: 2px;
-  background-color: white;
+  background-color: black;
   z-index: 10;
   pointer-events: none;
 }
@@ -813,7 +813,7 @@ body {
   transform: translateX(-50%) rotate(45deg);
   width: 12px;
   height: 12px;
-  background-color: white;
+  background-color: black;
 }
 
 /* 편집 타임라인 (하단 클립 리스트) */
@@ -826,12 +826,11 @@ body {
 
 .clips-container {
   position: relative;
-  height: 120px;
+  height: 80px;
   background-color: var(--border-color);
   border-radius: 8px;
   padding: 8px;
   overflow-x: auto;
-  min-height: 100px;
   max-height: 160px;
   overflow-y: hidden;
 }
@@ -847,7 +846,6 @@ body {
   position: relative;
   height: 80px;
   border-radius: 6px;
-  border: 2px solid black;
   flex-shrink: 0;
 }
 
@@ -888,4 +886,63 @@ body {
   50% {
     opacity: 0.5;
   }
+}
+
+.clip-wrapper {
+  position: absolute;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 0 2px; 
+  transition: all 0.3s ease-in-out;
+}
+
+.clip-item-content {
+  width: 95%;   
+  height: 90%;  
+  border-radius: 6px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  transition: transform 0.2s ease;
+}
+
+.clip-info-text-main {
+  font-weight: 700;
+  font-size: 12px;
+  color: #fff;
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+}
+
+.clip-info-text-sub {
+  font-size: 12px;
+  color: #fff;
+  opacity: 0.9;
+}
+
+.btn-clip-delete {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(0,0,0,0.3);
+  border: none;
+  border-radius: 50%;
+  color: white;
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  transition: background 0.2s;
+}
+
+.btn-clip-delete:hover {
+  background: rgba(220, 38, 38, 0.8); /* 삭제 시 빨간색 강조 */
 }

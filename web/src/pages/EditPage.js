@@ -78,7 +78,13 @@ function EditPage() {
           }
         });
         const videoData = response.data?.videos || [];
-        setCameras(videoData);
+        const color = ['#ef4444', '#facc15', '#22c55e', '#3b82f6'];
+        const coloredVideos = videoData.map((video, index) => ({
+          ...video,
+          color: color[index % color.length]
+        }));
+
+        setCameras(coloredVideos);
         setSavedClips([]); // 세션 재선택 시 클립 초기화
         setMultiviewCameras([null, null, null, null]); // 세션 재선택 시 멀티뷰 화면 초기화
         setSelectedSourceCam(null);
@@ -110,7 +116,7 @@ function EditPage() {
   // 현재 재생 중인 동영상의 시간을 보여주기 위한 함수로 타임라인의 Bar가 이동하거나 숫자 표시
   useEffect(() => {
     let animationId;
-  
+
     /* 동기화 재생 로직 */
     if (isPlaying && selectedSourceCam !== null) {
       const updateAllSync = () => {
@@ -160,7 +166,6 @@ function EditPage() {
   // play, pause 버튼 클릭 시 발생하는 이벤트 함수이고 모든 동영상의 재생, 정지를 제어
   const togglePlay = () => {
     if (selectedSourceCam === null) return;
-    // const allVideos = Object.values(videoRefs.current).filter(v => v); // Object(객체들 중)에서 videoRefs.current에 있는 비디오를 배열로 가져오고 필터링(실제 비디오만)
     const mainVideo = videoRefs.current[selectedSourceCam];
     const programVideo = programVideoRef.current; // 선택되어 프로그램 모니터 부분에 나타난 비디오
 
@@ -351,7 +356,7 @@ function EditPage() {
       start_seek: relativeStartSeek,
       end_seek: relativeEndSeek,
       duration: outPoint - inPoint,
-      global_in : inPoint,
+      global_in: inPoint,
       global_out: outPoint
     };
     const sortedClips = [...savedClips, newClip].sort((a, b) => a.start_seek - b.start_seek); // 저장된 클립들을 시작 시점과 종료 시점으로 정렬 -> 사용자가 클립의 순서를 꼬아놔도 영상의 진행 순서대로 정렬됨
@@ -730,15 +735,17 @@ function EditPage() {
                   ))}
                 </div>
                 <div className="timeline-track" ref={timelineRef} onClick={handleTimelineClick}>
-                  <div className="track-bg" style={{ backgroundColor: cameras.find(c => c.id === selectedSourceCam)?.color }} />
+                  <div className="track-bg" style={{ backgroundColor: '#ffffff', border: '2px solid rgb(0,0,0)' }} />
 
                   {savedClips.map((clip) => (
                     <div
                       key={clip.id}
                       className="clip-region"
                       style={{
-                        left: `${(clip.global_in / duration) * 100}%`,
-                        width: `${((clip.global_out - clip.global_in) / duration) * 100}%`,
+                        left: `${(clip.global_in / totalSessionDuration) * 100}%`,
+                        width: `${((clip.global_out - clip.global_in) / totalSessionDuration) * 100}%`,
+                        backgroundColor: cameras.find(c => c.id === clip.cam)?.color,
+                        opacity: 0.6
                       }}
                     >
                       {cameras[clip.cam].name}
@@ -760,7 +767,7 @@ function EditPage() {
                       className="marker"
                       onMouseDown={(e) => handleMarkerMouseDown('in', e)}
                       style={{
-                        left: `${(inPoint / duration) * 100}%`,
+                        left: `${(inPoint / totalSessionDuration) * 100}%`,
                         backgroundColor: '#10b981',
                       }}
                     >
@@ -773,7 +780,7 @@ function EditPage() {
                       className="marker"
                       onMouseDown={(e) => handleMarkerMouseDown('out', e)}
                       style={{
-                        left: `${(outPoint / duration) * 100}%`,
+                        left: `${(outPoint / totalSessionDuration) * 100}%`,
                         backgroundColor: '#ef4444',
                       }}
                     >
@@ -796,24 +803,45 @@ function EditPage() {
                     저장된 클립이 없습니다. 소스에서 구간을 선택하고 "클립 추가"를 눌러주세요.
                   </div>
                 ) : (
+                  /* EditPage.js 내 타임라인 렌더링 부분 */
+
                   <div className="clips-track">
                     {savedClips.map((clip) => (
                       <div
                         key={clip.id}
-                        className="clip-item"
+                        className="clip-wrapper"
                         style={{
-                          width: `${(clip.duration / totalSessionDuration) * 100}%`,
                           left: `${(clip.global_in / totalSessionDuration) * 100}%`,
-                          position: 'absolute',
-                          minWidth:'2px',
-                          backgroundColor: cameras[clip.cam].color
+                          width: `${(clip.duration / totalSessionDuration) * 100}%`,
                         }}
                       >
-                        <div className="clip-info">
-                          <div style={{ fontWeight: '600' }}>{cameras[clip.cam].name}</div>
-                          <div style={{ fontSize: '10px', opacity: 0.8 }}>{formatTime(clip.duration)}</div>
+                        <div
+                          className="clip-item-content"
+                          style={{
+                            backgroundColor: cameras[clip.cam].color,
+                            border: `2px solid ${cameras[clip.cam].color}`,
+                            boxShadow: `0 0 12px ${cameras[clip.cam].color}, inset 0 0 6px ${cameras[clip.cam].color}`,
+                          }}
+                        >
+                          <div className="clip-info" style={{ textAlign: 'center' }}>
+                            <div className="clip-info-text-main">
+                              {cameras[clip.cam].name}
+                            </div>
+                            <div className="clip-info-text-sub">
+                              {formatTime(clip.duration)}
+                            </div>
+                          </div>
+
+                          <button
+                            className="btn-clip-delete"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeClip(clip.id);
+                            }}
+                          >
+                            ×
+                          </button>
                         </div>
-                        <button className="btn-clip-close" onClick={() => removeClip(clip.id)}>×</button>
                       </div>
                     ))}
                   </div>
