@@ -55,16 +55,20 @@ async def login(request: UserLogin, db = Depends(get_db)): # ✅ LoginRequest �
         cursor.execute(session_query, (user['user_id'],))
         session_info = cursor.fetchone()
 
+        current_session_id = session_info['session_session_id'] if session_info else None
+        last_joined_at = int(session_info['joined_at'].timestamp() * 1000) if session_info and session_info['joined_at'] else None
+
+
         # 3. snake_case로 통일된 응답 반환
         return {
             "status": "success",
             "message": "로그인 성공",
-            "access_token": access_token,     # accessToken -> access_token
-            "id": user['id'],                 # userId -> id
-            "user_pk": user['user_id'],       # userPk -> user_pk
-            "user_name": user['user_name'],   # userName -> user_name
-            "current_session_id": str(session_info['session_session_id']) if session_info else None,
-            "last_joined_at": int(session_info['joined_at'].timestamp() * 1000) if session_info else None
+            "access_token": access_token,
+            "id": user['id'],
+            "user_pk": user['user_id'],
+            "user_name": user['user_name'],
+            "current_session_id": current_session_id,   
+            "last_joined_at": last_joined_at      
         }
             
     finally:
