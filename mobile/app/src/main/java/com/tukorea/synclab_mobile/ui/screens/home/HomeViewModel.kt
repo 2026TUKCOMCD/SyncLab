@@ -35,8 +35,11 @@ class HomeViewModel : ViewModel() {
         this.userEmail = "${loginResponse.userId}@synclab.com"
         this.isGuest = false
 
-        if (!loginResponse.currentSessionId.isNullOrEmpty()) {
-            this.currentSession = SessionInfo(
+        if (loginResponse.currentSessionId.isNullOrEmpty()) {
+            this.currentSession = null
+            this.recentVideos = emptyList()
+
+        }else{this.currentSession = SessionInfo(
                 sessionId = loginResponse.currentSessionId,
                 sessionName = "진행 중인 세션"
             )

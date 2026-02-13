@@ -136,30 +136,19 @@ fun LoginScreen(
             Spacer(modifier = Modifier.height(32.dp))
 
             Button(
-                enabled = !isProcessing,
+                enabled = !viewModel.isProcessing,
                 onClick = {
                     if (userId.isNotBlank() && userPw.isNotBlank()) {
-                        isProcessing = true
-                        coroutineScope.launch {
-                            try {
-                                val response = NetworkClient.authService.login(LoginRequest(userId, userPw))
-                                if (response.isSuccessful) {
-                                    val loginBody = response.body()
-                                    if (loginBody?.status == "success" && loginBody != null) {
-                                        authManager.saveToken(loginBody.accessToken)
-                                        onLoginSuccess(loginBody)
-                                    } else {
-                                        Toast.makeText(context, "로그인 정보가 틀렸습니다.", Toast.LENGTH_SHORT).show()
-                                    }
-                                } else {
-                                    Toast.makeText(context, "인증 실패 (${response.code()})", Toast.LENGTH_SHORT).show()
-                                }
-                            } catch (e: Exception) {
-                                Toast.makeText(context, "네트워크 에러: ${e.message}", Toast.LENGTH_SHORT).show()
-                            } finally {
-                                isProcessing = false
+                        viewModel.login(
+                            userId = userId,
+                            userPw = userPw,
+                            onSuccess = { loginBody ->
+                                onLoginSuccess(loginBody)
+                            },
+                            onError = { errorMsg ->
+                                Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
                             }
-                        }
+                        )
                     } else {
                         Toast.makeText(context, "아이디와 비밀번호를 입력해주세요.", Toast.LENGTH_SHORT).show()
                     }
@@ -167,8 +156,11 @@ fun LoginScreen(
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = MaterialTheme.shapes.medium
             ) {
-                if (isProcessing) {
-                    CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                if (viewModel.isProcessing) {
+                    CircularProgressIndicator(
+                        color = Color.White,
+                        modifier = Modifier.size(24.dp)
+                    )
                 } else {
                     Text(text = "로그인", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 }
