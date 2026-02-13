@@ -4,6 +4,7 @@ import android.util.Log
 import androidx.compose.runtime.*
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.data.model.LoginResponse
 import com.tukorea.synclab_mobile.data.model.SessionInfo
 import com.tukorea.synclab_mobile.data.model.VideoStatus
@@ -26,11 +27,9 @@ class HomeViewModel : ViewModel() {
 
     var errorMessage by mutableStateOf<String?>(null)
 
-    init {
-
-    }
-
     fun updateUserInfo(loginResponse: LoginResponse) {
+        Log.d("HomeViewModel", "📝 updateUserInfo 시작: ${loginResponse.userName}")
+
         this.userName = loginResponse.userName
         this.userEmail = "${loginResponse.userId}@synclab.com"
         this.isGuest = false
@@ -38,26 +37,32 @@ class HomeViewModel : ViewModel() {
         if (loginResponse.currentSessionId.isNullOrEmpty()) {
             this.currentSession = null
             this.recentVideos = emptyList()
-
-        }else{this.currentSession = SessionInfo(
+        } else {
+            this.currentSession = SessionInfo(
                 sessionId = loginResponse.currentSessionId,
                 sessionName = "진행 중인 세션"
             )
         }
+
+        Log.d("HomeViewModel", "🔄 loadHomeData 호출 전 - userName: $userName")
         loadHomeData()
-        Log.d("HomeViewModel", "✅ 로그인 정보 업데이트 완료: $userName, 세션: ${loginResponse.currentSessionId}")
     }
 
     fun loadHomeData() {
         viewModelScope.launch {
             try {
-                val response = com.tukorea.synclab_mobile.api.NetworkClient.homeService.getHomeData()
+                Log.d("HomeViewModel", "📡 서버에서 홈 데이터 요청")
+                val response = NetworkClient.homeService.getHomeData()
+
+                Log.d("HomeViewModel", "📥 서버 응답 - userName: ${response.userName}, userId: ${response.userId}")
 
                 response.userName?.let {
                     this@HomeViewModel.userName = it
+                    Log.d("HomeViewModel", "✏️ userName 업데이트: $it")
                 }
                 response.userId?.let {
                     this@HomeViewModel.userEmail = "$it@synclab.com"
+                    Log.d("HomeViewModel", "✏️ userEmail 업데이트: $it@synclab.com")
                 }
 
                 currentSession = response.currentSession
@@ -66,8 +71,11 @@ class HomeViewModel : ViewModel() {
                 currentSession?.sessionId?.let { sid ->
                     recentVideos = response.videos?.get(sid) ?: emptyList()
                 }
+
+                Log.d("HomeViewModel", "✅ 최종 userName: $userName")
             } catch (e: Exception) {
-                Log.e("HomeViewModel", "홈 데이터 로드 실패: ${e.message}")
+                Log.e("HomeViewModel", "❌ 홈 데이터 로드 실패: ${e.message}")
+                e.printStackTrace()
             }
         }
     }
@@ -129,8 +137,10 @@ class HomeViewModel : ViewModel() {
         val sid = currentSession?.sessionId ?: return
         viewModelScope.launch {
             repository.fetchSessionVideos(sid).onSuccess { response ->
-                val videoList = response["videos"] as? List<*>
-                recentVideos = videoList?.filterIsInstance<VideoStatus>() ?: emptyList()
+                recentVideos = when (val videoList = response["videos"]) {
+                    is List<*> -> videoList.filterIsInstance<VideoStatus>()
+                    else -> emptyList()
+                }
             }.onFailure { e ->
                 Log.e("HomeViewModel", "영상 갱신 실패: ${e.message}")
             }
