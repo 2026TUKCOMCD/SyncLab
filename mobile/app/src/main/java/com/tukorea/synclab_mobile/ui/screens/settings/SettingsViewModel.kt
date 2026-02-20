@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.utils.userSettingsStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,7 +24,8 @@ data class SettingsUiState(
     val cacheSize: String = "0.0MB",
     val userName: String = "게스트",
     val userEmail: String = "로그인이 필요합니다",
-    val profileImageUrl: Any = "https://ui-avatars.com/api/?name=Guest&background=EBF4FF&color=7F9CF5&bold=true"
+    val profileImageUrl: String? = null,
+    val loginType: String = "guest"  // "google" | "kakao" | "email" | "local" | "guest"
 )
 
 class SettingsViewModel(private val context: Context) : ViewModel() {
@@ -81,17 +83,15 @@ class SettingsViewModel(private val context: Context) : ViewModel() {
         isGuestUser: Boolean,
         userNameFromDb: String,
         userEmailFromDb: String,
-        logoResourceId: Int
+        profileImageUrl: String?,
+        loginType: String
     ) {
         _uiState.value = _uiState.value.copy(
             isGuest = isGuestUser,
             userName = if (isGuestUser) "게스트" else userNameFromDb,
             userEmail = if (isGuestUser) "로그인이 필요합니다" else userEmailFromDb,
-            profileImageUrl = if (isGuestUser) {
-                "https://ui-avatars.com/api/?name=Guest&background=EBF4FF&color=7F9CF5&bold=true"
-            } else {
-                logoResourceId
-            }
+            profileImageUrl = if (isGuestUser) null else profileImageUrl,
+            loginType = if (isGuestUser) "guest" else loginType
         )
     }
 
@@ -117,6 +117,31 @@ class SettingsViewModel(private val context: Context) : ViewModel() {
         viewModelScope.launch {
             _uiState.value = SettingsUiState()
             onComplete()
+        }
+    }
+
+    fun updateUserName(
+        newName: String,
+        onSuccess: (String) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        if (newName.isBlank()) { onError("닉네임을 입력해주세요."); return }
+        if (newName.length > 16) { onError("닉네임은 16자 이하로 입력해주세요."); return }
+
+        viewModelScope.launch {
+            try {
+                val response = NetworkClient.homeService.updateUserName(
+                    mapOf("user_name" to newName)
+                )
+                if (response.status == "success") {
+                    _uiState.value = _uiState.value.copy(userName = newName)
+                    onSuccess(newName)
+                } else {
+                    onError(response.message)
+                }
+            } catch (e: Exception) {
+                onError("닉네임 변경에 실패했습니다: ${e.localizedMessage}")
+            }
         }
     }
 

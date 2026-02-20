@@ -21,6 +21,9 @@ class HomeViewModel : ViewModel() {
     var isGuest by mutableStateOf(true)
     var userName by mutableStateOf("게스트")
     var userEmail by mutableStateOf("로그인이 필요합니다")
+    var profileImageUrl by mutableStateOf<String?>(null)
+    // "google" | "kakao" | "email" | "local" | "guest"
+    var loginType by mutableStateOf("guest")
 
     var currentInviteCode by mutableStateOf("")
     var expiresIn by mutableIntStateOf(0)
@@ -31,8 +34,23 @@ class HomeViewModel : ViewModel() {
         Log.d("HomeViewModel", "📝 updateUserInfo 시작: ${loginResponse.userName}")
 
         this.userName = loginResponse.userName
-        this.userEmail = "${loginResponse.userId}@synclab.com"
+        this.profileImageUrl = loginResponse.profileImage
         this.isGuest = false
+
+        // userId 접두사로 로그인 타입 결정
+        this.loginType = when {
+            loginResponse.userId.startsWith("google_") -> "google"
+            loginResponse.userId.startsWith("kakao_") -> "kakao"
+            loginResponse.userId.contains("@") -> "email"
+            else -> "local"
+        }
+        // 실제 이메일이 있으면 표시, 없으면 로그인 방식 표시
+        this.userEmail = loginResponse.email
+            ?: when (this.loginType) {
+                "google" -> "Google 계정"
+                "kakao" -> "카카오 계정"
+                else -> ""
+            }
 
         if (loginResponse.currentSessionId.isNullOrEmpty()) {
             this.currentSession = null
@@ -60,8 +78,8 @@ class HomeViewModel : ViewModel() {
                     this@HomeViewModel.userName = it
                     Log.d("HomeViewModel", "✏️ userName 업데이트: $it")
                 }
-                response.userId?.let {
-                    this@HomeViewModel.userEmail = "$it@synclab.com"
+                response.email?.let {
+                    this@HomeViewModel.userEmail = it
                     Log.d("HomeViewModel", "✏️ userEmail 업데이트: $it@synclab.com")
                 }
 
@@ -159,6 +177,8 @@ class HomeViewModel : ViewModel() {
         isGuest = true
         userName = "게스트"
         userEmail = "로그인이 필요합니다"
+        profileImageUrl = null
+        loginType = "guest"
         sessionHistory = emptyList()
         clearSession()
     }

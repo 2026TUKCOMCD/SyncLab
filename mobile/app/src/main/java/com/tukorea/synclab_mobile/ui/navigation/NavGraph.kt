@@ -11,6 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.tukorea.synclab_mobile.Screen
 import com.tukorea.synclab_mobile.ui.screens.auth.LoginScreen
+import com.tukorea.synclab_mobile.ui.screens.auth.SignupScreen
 import com.tukorea.synclab_mobile.ui.screens.upload.UploadScreen
 import com.tukorea.synclab_mobile.ui.screens.record.RecordScreen
 import com.tukorea.synclab_mobile.ui.components.PlaceholderScreen
@@ -49,7 +50,23 @@ fun NavGraph(
                     navController.navigate(Screen.Home.route) {
                         popUpTo(Screen.Login.route) { inclusive = true }
                     }
+                },
+                onSignupClick = {
+                    navController.navigate(Screen.Signup.route)
                 }
+            )
+        }
+
+        // 회원가입 화면
+        composable(route = Screen.Signup.route) {
+            SignupScreen(
+                onSignupSuccess = { loginResponse ->
+                    sharedHomeViewModel.updateUserInfo(loginResponse)
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Login.route) { inclusive = true }
+                    }
+                },
+                onBack = { navController.popBackStack() }
             )
         }
 

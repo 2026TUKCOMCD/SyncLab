@@ -52,6 +52,39 @@ class LoginResponse(BaseModel):
     access_token: Optional[str] = None
 
 
+class GoogleLoginRequest(BaseModel):
+    """Google 소셜 로그인 요청"""
+    id_token: str
+
+
+class KakaoLoginRequest(BaseModel):
+    """Kakao 소셜 로그인 요청"""
+    access_token: str
+
+
+class SendCodeRequest(BaseModel):
+    """이메일 인증 코드 발송 요청"""
+    email: str
+
+
+class VerifyCodeRequest(BaseModel):
+    """이메일 인증 코드 검증 요청"""
+    email: str
+    code: str
+
+
+class SignupRequest(BaseModel):
+    """이메일 회원가입 요청"""
+    email: str
+    password: str
+    user_name: str
+
+
+class UpdateNameRequest(BaseModel):
+    """닉네임 변경 요청"""
+    user_name: str
+
+
 # ============================================
 # 세션 관련 (모바일)
 # ============================================

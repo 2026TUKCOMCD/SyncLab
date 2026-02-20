@@ -22,4 +22,7 @@ interface HomeService {
 
     @GET("api/video/list/{sessionId}")
     suspend fun getSessionVideos(@Path("sessionId") sessionId: String): Map<String, Any>
+
+    @PUT("api/mobile/home/update-name")
+    suspend fun updateUserName(@Body body: Map<String, String>): SimpleResponse
 }

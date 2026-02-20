@@ -2,6 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from fastapi.security import HTTPBearer
 from fastapi.security.http import HTTPAuthorizationCredentials
 from app.database.connection import get_db
+from app.models.schemas import UpdateNameRequest
 from jose import jwt, JWTError
 import os
 from dotenv import load_dotenv
@@ -44,7 +45,7 @@ async def get_home_data(
         user_id = current_user["user_id"]
         
         # 사용자 정보 조회 (user_id는 PK이므로 user_id로 조회)
-        query_user = "SELECT user_id, id as user_id_string, user_name FROM user WHERE user_id = %s"
+        query_user = "SELECT user_id, id as user_id_string, user_name, email FROM user WHERE user_id = %s"
         cursor.execute(query_user, (user_id,))
         user_info = cursor.fetchone()
         
@@ -98,7 +99,8 @@ async def get_home_data(
         # 4. 안드로이드 응답 규격 반환
         return {
             "user_name": user_info['user_name'],
-            "user_id": user_info['user_id_string'],  # id 컬럼 값 (예: "111", "select")
+            "user_id": user_info['user_id_string'],
+            "email": user_info.get('email'),
             "current_session": current_session,
             "history": history if history else [],
             "videos": videos_map,
@@ -113,10 +115,27 @@ async def get_home_data(
     finally:
         cursor.close()
 
-        security = HTTPBearer()
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """JWT 토큰에서 사용자 ID 추출"""
-    token = credentials.credentials
-    payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-    return {"user_id": payload.get("user_id")}
+@router.put("/update-name")
+async def update_user_name(
+    request: UpdateNameRequest,
+    current_user: dict = Depends(get_current_user),
+    db=Depends(get_db)
+):
+    """닉네임 변경"""
+    new_name = request.user_name.strip()
+    if not new_name:
+        raise HTTPException(status_code=400, detail="닉네임을 입력해주세요.")
+    if len(new_name) > 16:
+        raise HTTPException(status_code=400, detail="닉네임은 16자 이하로 입력해주세요.")
+
+    cursor = db.cursor(dictionary=True)
+    try:
+        cursor.execute(
+            "UPDATE user SET user_name = %s WHERE user_id = %s",
+            (new_name, current_user["user_id"])
+        )
+        db.commit()
+        return {"status": "success", "message": "닉네임이 변경되었습니다.", "user_name": new_name}
+    finally:
+        cursor.close()

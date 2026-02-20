@@ -6,6 +6,8 @@ USE synclab;
 -- ==============================================================
 DROP TABLE IF EXISTS video;
 DROP TABLE IF EXISTS user_session;
+DROP TABLE IF EXISTS social_account;
+DROP TABLE IF EXISTS email_verification;
 DROP TABLE IF EXISTS session;
 DROP TABLE IF EXISTS user;
 DROP TABLE IF EXISTS edit;
@@ -15,11 +17,28 @@ DROP TABLE IF EXISTS edit;
 -- ==============================================================
 CREATE TABLE user (
     user_id INT AUTO_INCREMENT PRIMARY KEY COMMENT '내부 관리용 유저 고유 번호',
-    id VARCHAR(16) UNIQUE NOT NULL COMMENT '앱 로그인용 아이디',
-    password VARCHAR(16) NOT NULL COMMENT '비밀번호',
+    id VARCHAR(128) UNIQUE NOT NULL COMMENT '앱 로그인용 아이디 또는 소셜 고유 ID',
+    password VARCHAR(128) NULL COMMENT '비밀번호 (소셜 로그인 시 NULL)',
     user_name VARCHAR(16) NOT NULL COMMENT '사용자 이름',
+    login_type VARCHAR(10) NOT NULL DEFAULT 'local' COMMENT '로그인 유형 (local, google, kakao)',
+    email VARCHAR(255) NULL COMMENT '이메일 (소셜 로그인 시 제공됨)',
+    profile_image VARCHAR(512) NULL COMMENT '프로필 이미지 URL',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP COMMENT '계정 생성 일시'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='사용자 계정 정보';
+
+-- ==============================================================
+-- 1-1. social_account 테이블: 소셜 로그인 연동 정보
+-- ==============================================================
+CREATE TABLE social_account (
+    social_account_id INT AUTO_INCREMENT PRIMARY KEY,
+    user_user_id INT NOT NULL COMMENT '연동된 유저의 user_id',
+    provider VARCHAR(10) NOT NULL COMMENT '소셜 제공자 (google, kakao)',
+    provider_user_id VARCHAR(255) NOT NULL COMMENT '소셜 제공자 고유 사용자 ID',
+    email VARCHAR(255) NULL COMMENT '소셜 계정 이메일',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_provider_user (provider, provider_user_id),
+    CONSTRAINT fk_social_user FOREIGN KEY (user_user_id) REFERENCES user(user_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='소셜 로그인 연동 정보';
 
 -- ==============================================================
 -- 2. session 테이블: ID를 VARCHAR(50)으로 변경
@@ -73,7 +92,19 @@ CREATE TABLE edit (
     FOREIGN KEY (`session_session_id`)
     REFERENCES `synclab`.`session` (`session_id`))
 ENGINE = InnoDB
-DEFAULT CHARACTER SET = utf8mb3;
+DEFAULT CHARACTER SET = utf8mb4;
+-- ==============================================================
+-- 6. email_verification 테이블: 이메일 인증 코드
+-- ==============================================================
+CREATE TABLE email_verification (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(255) NOT NULL COMMENT '인증 대상 이메일',
+    code VARCHAR(6) NOT NULL COMMENT '6자리 인증 코드',
+    expires_at DATETIME NOT NULL COMMENT '인증 코드 만료 시간',
+    verified BOOLEAN DEFAULT FALSE COMMENT '인증 완료 여부',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='이메일 인증 코드 관리';
+
 -- ==============================================================
 -- 테스트 데이터 삽입
 -- ==============================================================

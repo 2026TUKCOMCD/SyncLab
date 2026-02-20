@@ -33,6 +33,7 @@ import com.tukorea.synclab_mobile.ui.navigation.NavGraph
 import com.tukorea.synclab_mobile.ui.theme.SyncLab_MobileTheme
 import com.tukorea.synclab_mobile.utils.PermissionHelper
 import com.tukorea.synclab_mobile.utils.NtpSyncManager
+import com.kakao.sdk.common.KakaoSdk
 
 // 시안 기반 화면 정보 정의
 sealed class Screen(val route: String, val label: String, val icon: ImageVector) {
@@ -41,12 +42,14 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Record : Screen("record", "녹화", Icons.Default.RadioButtonChecked) // fa-circle-dot 스타일
     object Upload : Screen("upload", "업로드", Icons.Default.CloudUpload) // fa-cloud-arrow-up 스타일
     object Settings : Screen("settings", "설정", Icons.Default.Settings) // fa-gear 스타일
+    object Signup : Screen("signup", "회원가입", Icons.Default.Lock)
 }
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         NetworkClient.init(applicationContext)
+        KakaoSdk.init(this, BuildConfig.KAKAO_NATIVE_APP_KEY)
         setContent {
             SyncLab_MobileTheme {
                 Surface(

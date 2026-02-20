@@ -19,6 +19,14 @@ class AuthManager(context: Context) {
         prefs.edit().remove("access_token").apply()
     }
 
+    fun saveProfileImage(url: String?) {
+        prefs.edit().putString("profile_image", url).apply()
+    }
+
+    fun getProfileImage(): String? {
+        return prefs.getString("profile_image", null)
+    }
+
     fun clearAuthData() {
         prefs.edit().clear().apply()
     }

@@ -7,6 +7,8 @@ import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.tukorea.synclab_mobile.api.NetworkClient
+import com.tukorea.synclab_mobile.data.model.GoogleLoginRequest
+import com.tukorea.synclab_mobile.data.model.KakaoLoginRequest
 import com.tukorea.synclab_mobile.data.model.LoginRequest
 import com.tukorea.synclab_mobile.data.model.LoginResponse
 import com.tukorea.synclab_mobile.data.model.SessionJoinRequest
@@ -43,6 +45,7 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
                         authManager.clearAuthData()
                         authManager.saveToken(loginBody.accessToken)
+                        authManager.saveProfileImage(loginBody.profileImage)
                         NetworkClient.resetClient()
 
                         onSuccess(loginBody)
@@ -93,6 +96,68 @@ class LoginViewModel(application: Application) : AndroidViewModel(application) {
 
             } catch (e: Exception) {
                 onError("연결 실패: ${e.localizedMessage}")
+            } finally {
+                isProcessing = false
+            }
+        }
+    }
+
+    fun googleLogin(
+        idToken: String,
+        onSuccess: (LoginResponse) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        isProcessing = true
+        viewModelScope.launch {
+            try {
+                val response = NetworkClient.authService.googleLogin(GoogleLoginRequest(idToken))
+                if (response.isSuccessful) {
+                    val loginBody = response.body()
+                    if (loginBody?.status == "success") {
+                        authManager.clearAuthData()
+                        authManager.saveToken(loginBody.accessToken)
+                        authManager.saveProfileImage(loginBody.profileImage)
+                        NetworkClient.resetClient()
+                        onSuccess(loginBody)
+                    } else {
+                        onError("Google 로그인에 실패했습니다.")
+                    }
+                } else {
+                    onError("서버 에러가 발생했습니다. (코드: ${response.code()})")
+                }
+            } catch (e: Exception) {
+                onError("서버와의 연결이 원활하지 않습니다: ${e.localizedMessage}")
+            } finally {
+                isProcessing = false
+            }
+        }
+    }
+
+    fun kakaoLogin(
+        accessToken: String,
+        onSuccess: (LoginResponse) -> Unit,
+        onError: (String) -> Unit
+    ) {
+        isProcessing = true
+        viewModelScope.launch {
+            try {
+                val response = NetworkClient.authService.kakaoLogin(KakaoLoginRequest(accessToken))
+                if (response.isSuccessful) {
+                    val loginBody = response.body()
+                    if (loginBody?.status == "success") {
+                        authManager.clearAuthData()
+                        authManager.saveToken(loginBody.accessToken)
+                        authManager.saveProfileImage(loginBody.profileImage)
+                        NetworkClient.resetClient()
+                        onSuccess(loginBody)
+                    } else {
+                        onError("Kakao 로그인에 실패했습니다.")
+                    }
+                } else {
+                    onError("서버 에러가 발생했습니다. (코드: ${response.code()})")
+                }
+            } catch (e: Exception) {
+                onError("서버와의 연결이 원활하지 않습니다: ${e.localizedMessage}")
             } finally {
                 isProcessing = false
             }

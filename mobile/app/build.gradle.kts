@@ -49,9 +49,22 @@ android {
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
+        // .env 값의 앞뒤 따옴표를 제거하는 헬퍼
+        fun envString(key: String): String? =
+            prop.getProperty(key)?.trim()?.removeSurrounding("\"")
+
         // [필수 추가] BuildConfig에 BASE_URL 주입
-        val baseUrl = prop.getProperty("BASE_URL") ?: "\"http://10.0.2.2:3000/\""
-        buildConfigField("String", "BASE_URL", baseUrl)
+        val baseUrl = envString("BASE_URL")
+        buildConfigField("String", "BASE_URL", if (baseUrl != null) "\"$baseUrl\"" else "\"http://10.0.2.2:3000/\"")
+
+        val googleClientId = envString("GOOGLE_CLIENT_ID")
+        buildConfigField("String", "GOOGLE_CLIENT_ID", if (googleClientId != null) "\"$googleClientId\"" else "\"\"")
+
+        val kakaoNativeAppKey = envString("KAKAO_NATIVE_APP_KEY")
+        buildConfigField("String", "KAKAO_NATIVE_APP_KEY", if (kakaoNativeAppKey != null) "\"$kakaoNativeAppKey\"" else "\"\"")
+
+        // Kakao SDK - AndroidManifest에서 사용할 scheme 설정
+        manifestPlaceholders["KAKAO_NATIVE_APP_KEY"] = "kakao${kakaoNativeAppKey ?: ""}"
     }
 
     buildTypes {
@@ -145,4 +158,12 @@ dependencies {
 
     implementation("androidx.navigation:navigation-compose:2.7.7")
     implementation("androidx.compose.material:material-icons-extended:1.6.0")
+
+    // Google Credential Manager (Google Sign-In)
+    implementation("androidx.credentials:credentials:1.3.0")
+    implementation("androidx.credentials:credentials-play-services-auth:1.3.0")
+    implementation("com.google.android.libraries.identity.googleid:googleid:1.1.1")
+
+    // Kakao SDK (Login)
+    implementation("com.kakao.sdk:v2-user:2.20.6")
 }

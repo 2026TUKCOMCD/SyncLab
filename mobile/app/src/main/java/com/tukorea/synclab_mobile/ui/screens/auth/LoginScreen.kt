@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 fun LoginScreen(
     onLoginSuccess: (LoginResponse) -> Unit,
     onGuestLogin: (String) -> Unit,
+    onSignupClick: () -> Unit,
     viewModel: LoginViewModel = viewModel()
 ) {
     val context = LocalContext.current
@@ -168,9 +169,61 @@ fun LoginScreen(
 
             Spacer(modifier = Modifier.height(12.dp))
 
+            TextButton(onClick = onSignupClick) {
+                Text("이메일로 회원가입", color = Color(0xFF3366FF), fontSize = 14.sp)
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Color.LightGray)
+                Text("  또는  ", color = Color.Gray, fontSize = 14.sp)
+                HorizontalDivider(modifier = Modifier.weight(1f), color = Color.LightGray)
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            GoogleSignInButton(
+                enabled = !viewModel.isProcessing,
+                onIdTokenReceived = { idToken ->
+                    viewModel.googleLogin(
+                        idToken = idToken,
+                        onSuccess = { loginBody -> onLoginSuccess(loginBody) },
+                        onError = { errorMsg ->
+                            Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                },
+                onError = { errorMsg ->
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            KakaoLoginButton(
+                enabled = !viewModel.isProcessing,
+                onAccessTokenReceived = { accessToken ->
+                    viewModel.kakaoLogin(
+                        accessToken = accessToken,
+                        onSuccess = { loginBody -> onLoginSuccess(loginBody) },
+                        onError = { errorMsg ->
+                            Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                        }
+                    )
+                },
+                onError = { errorMsg ->
+                    Toast.makeText(context, errorMsg, Toast.LENGTH_SHORT).show()
+                }
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
             OutlinedButton(
                 onClick = {
-                    // 다이얼로그 띄우기 전에도 입력 필드 초기화
                     inviteCodeInput = ""
                     showGuestDialog = true
                 },

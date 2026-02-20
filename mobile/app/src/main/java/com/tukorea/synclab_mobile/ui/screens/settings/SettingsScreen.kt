@@ -18,14 +18,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.tukorea.synclab_mobile.ui.screens.home.HomeViewModel
-import com.tukorea.synclab_mobile.R
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,13 +40,15 @@ fun SettingsScreen(
     val uiState by viewModel.uiState.collectAsState()
 
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showNicknameDialog by remember { mutableStateOf(false) }
 
-    LaunchedEffect(homeViewModel.isGuest, homeViewModel.userName) {
+    LaunchedEffect(homeViewModel.isGuest, homeViewModel.userName, homeViewModel.profileImageUrl) {
         viewModel.syncUserInfo(
             isGuestUser = homeViewModel.isGuest,
             userNameFromDb = homeViewModel.userName,
             userEmailFromDb = homeViewModel.userEmail,
-            logoResourceId = R.drawable.synclab_logo
+            profileImageUrl = homeViewModel.profileImageUrl,
+            loginType = homeViewModel.loginType
         )
     }
 
@@ -66,7 +66,16 @@ fun SettingsScreen(
     ) { innerPadding ->
         LazyColumn(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
             // 1. 프로필 섹션
-            item { ProfileSection(uiState.userName, uiState.userEmail, uiState.profileImageUrl) }
+            item {
+                ProfileSection(
+                    name = uiState.userName,
+                    email = uiState.userEmail,
+                    imageUrl = uiState.profileImageUrl,
+                    loginType = uiState.loginType,
+                    isGuest = uiState.isGuest,
+                    onEditClick = { showNicknameDialog = true }
+                )
+            }
 
             // 2. 데이터 및 업로드 관리
             item {
@@ -152,26 +161,126 @@ fun SettingsScreen(
             }
         )
     }
+
+    // 닉네임 변경 다이얼로그
+    if (showNicknameDialog) {
+        var inputName by remember { mutableStateOf(uiState.userName) }
+        AlertDialog(
+            onDismissRequest = { showNicknameDialog = false },
+            title = { Text("닉네임 변경", fontWeight = FontWeight.Bold) },
+            text = {
+                OutlinedTextField(
+                    value = inputName,
+                    onValueChange = { if (it.length <= 16) inputName = it },
+                    label = { Text("새 닉네임") },
+                    singleLine = true,
+                    supportingText = { Text("${inputName.length}/16") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    enabled = inputName.isNotBlank(),
+                    onClick = {
+                        viewModel.updateUserName(
+                            newName = inputName,
+                            onSuccess = { newName ->
+                                homeViewModel.userName = newName
+                                showNicknameDialog = false
+                            },
+                            onError = { /* 에러는 ViewModel에서 로그 */ }
+                        )
+                    }
+                ) { Text("변경") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNicknameDialog = false }) { Text("취소") }
+            }
+        )
+    }
 }
 
 @Composable
-fun ProfileSection(name: String, email: String, imageUrl: Any) {
+fun ProfileSection(
+    name: String,
+    email: String,
+    imageUrl: String?,
+    loginType: String,
+    isGuest: Boolean = false,
+    onEditClick: () -> Unit = {}
+) {
+    val badgeInfo = when (loginType) {
+        "google" -> Pair("Google", Color(0xFF4285F4))
+        "kakao"  -> Pair("카카오", Color(0xFFFFE812))
+        "email"  -> Pair("이메일", Color(0xFF10B981))
+        "local"  -> Pair("일반", Color(0xFF6366F1))
+        else     -> null
+    }
+
     Row(
         modifier = Modifier.fillMaxWidth().background(Color.White).padding(20.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = imageUrl,
-            contentDescription = "Profile Image",
+        // 프로필 이미지
+        Box(
             modifier = Modifier.size(64.dp).clip(CircleShape).background(Color(0xFFF3F4F6)),
-            contentScale = ContentScale.Crop
-        )
+            contentAlignment = Alignment.Center
+        ) {
+            if (imageUrl != null) {
+                AsyncImage(
+                    model = imageUrl,
+                    contentDescription = "프로필 사진",
+                    modifier = Modifier.fillMaxSize(),
+                    contentScale = ContentScale.Crop
+                )
+            } else {
+                Icon(
+                    Icons.Default.Person,
+                    contentDescription = "기본 프로필",
+                    tint = Color(0xFF94A3B8),
+                    modifier = Modifier.size(36.dp)
+                )
+            }
+        }
+
         Spacer(modifier = Modifier.width(16.dp))
+
         Column(modifier = Modifier.weight(1f)) {
-            Text(name, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Text(email, fontSize = 14.sp, color = Color.Gray)
-            if (name != "게스트") {
-                Text("가입일: 2026.02", fontSize = 11.sp, color = Color.LightGray, fontStyle = FontStyle.Italic)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(name, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                if (badgeInfo != null) {
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Surface(
+                        color = badgeInfo.second.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(4.dp)
+                    ) {
+                        Text(
+                            text = badgeInfo.first,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = badgeInfo.second.copy(alpha = 0.9f),
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+                if (!isGuest) {
+                    Spacer(modifier = Modifier.width(4.dp))
+                    IconButton(
+                        onClick = onEditClick,
+                        modifier = Modifier.size(28.dp)
+                    ) {
+                        Icon(
+                            Icons.Default.Edit,
+                            contentDescription = "닉네임 변경",
+                            tint = Color(0xFF94A3B8),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
+                }
+            }
+            if (email.isNotBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(email, fontSize = 13.sp, color = Color.Gray)
             }
         }
     }

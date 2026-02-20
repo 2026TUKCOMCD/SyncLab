@@ -39,6 +39,7 @@ data class HomeDataResponse(
 
     @SerializedName("user_name") val userName: String? = null,
     @SerializedName("user_id") val userId: String? = null,
+    val email: String? = null,
 
     @SerializedName("temp_codes") val tempCodes: Map<String, Any>? = null
 )
