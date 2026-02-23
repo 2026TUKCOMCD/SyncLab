@@ -166,4 +166,7 @@ dependencies {
 
     // Kakao SDK (Login)
     implementation("com.kakao.sdk:v2-user:2.20.6")
+
+    // 토큰 암호화 저장
+    implementation("androidx.security:security-crypto:1.1.0-alpha06")
 }

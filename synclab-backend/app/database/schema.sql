@@ -102,13 +102,15 @@ CREATE TABLE email_verification (
     code VARCHAR(6) NOT NULL COMMENT '6자리 인증 코드',
     expires_at DATETIME NOT NULL COMMENT '인증 코드 만료 시간',
     verified BOOLEAN DEFAULT FALSE COMMENT '인증 완료 여부',
+    attempts INT DEFAULT 0 COMMENT '인증 시도 횟수 (5회 초과 시 차단)',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='이메일 인증 코드 관리';
 
 -- ==============================================================
 -- 테스트 데이터 삽입
 -- ==============================================================
-INSERT INTO user (id, password, user_name) VALUES ('111', '111', '테스트 관리자');
+-- 테스트 계정: id=111, password=111 (bcrypt 해시)
+INSERT INTO user (id, password, user_name) VALUES ('111', '$2b$12$1TIIiftu25WkN29LNmeVe..gy0QN3wonmgQ5Lm/JsJbUuLq5M.mkO', '테스트 관리자');
 
 SELECT '✅ SyncLab 스키마(문자열 ID 최적화) 생성 완료!' AS status;
 SHOW TABLES;

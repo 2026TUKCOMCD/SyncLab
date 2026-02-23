@@ -2,11 +2,12 @@
 from fastapi import APIRouter, HTTPException, Depends
 from app.database.connection import get_db
 from app.models.schemas import (
-    UserLogin, LoginResponse, GoogleLoginRequest, KakaoLoginRequest,
+    UserLogin, GoogleLoginRequest, KakaoLoginRequest,
     SendCodeRequest, VerifyCodeRequest, SignupRequest
 )
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from jose import jwt
+import bcrypt
 import os
 import random
 import smtplib
@@ -18,6 +19,27 @@ from dotenv import load_dotenv
 load_dotenv()
 
 router = APIRouter(prefix="/api/mobile/auth", tags=["Mobile Authentication"])
+
+# 로그인 실패 횟수 추적 (메모리, 서버 재시작 시 초기화)
+# {user_id: {"count": int, "locked_until": datetime | None}}
+_login_attempts: dict = {}
+
+def _check_login_limit(user_id: str):
+    info = _login_attempts.get(user_id, {"count": 0, "locked_until": None})
+    if info["locked_until"] and datetime.now(timezone.utc) < info["locked_until"]:
+        remaining = int((info["locked_until"] - datetime.now(timezone.utc)).total_seconds())
+        raise HTTPException(status_code=429, detail=f"로그인 시도 횟수를 초과했습니다. {remaining}초 후 다시 시도해주세요.")
+
+def _record_failed_login(user_id: str):
+    info = _login_attempts.get(user_id, {"count": 0, "locked_until": None})
+    info["count"] += 1
+    if info["count"] >= 5:
+        info["locked_until"] = datetime.now(timezone.utc) + timedelta(minutes=15)
+        info["count"] = 0
+    _login_attempts[user_id] = info
+
+def _clear_login_attempts(user_id: str):
+    _login_attempts.pop(user_id, None)
 
 # ============================================
 # JWT 설정
@@ -32,7 +54,7 @@ SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 
 def create_access_token(data: dict):
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
@@ -76,13 +98,18 @@ async def login(request: UserLogin, db=Depends(get_db)):
     cursor = db.cursor(dictionary=True)
 
     try:
-        query = "SELECT user_id, id, user_name, email FROM user WHERE id = %s AND password = %s"
-        cursor.execute(query, (request.id, request.password))
+        # 잠금 여부 확인
+        _check_login_limit(request.id)
+
+        query = "SELECT user_id, id, user_name, email, password FROM user WHERE id = %s"
+        cursor.execute(query, (request.id,))
         user = cursor.fetchone()
 
-        if not user:
+        if not user or not user['password'] or not bcrypt.checkpw(request.password.encode(), user['password'].encode()):
+            _record_failed_login(request.id)
             raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
 
+        _clear_login_attempts(request.id)
         return _build_login_response(cursor, user)
 
     finally:
@@ -258,9 +285,23 @@ async def send_code(request: SendCodeRequest, db=Depends(get_db)):
         if cursor.fetchone():
             raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
 
+        # 60초 이내 재발송 차단
+        cursor.execute(
+            "SELECT created_at FROM email_verification WHERE email = %s ORDER BY created_at DESC LIMIT 1",
+            (request.email,)
+        )
+        recent = cursor.fetchone()
+        if recent:
+            created = recent['created_at']
+            if created.tzinfo is None:
+                created = created.replace(tzinfo=timezone.utc)
+            elapsed = (datetime.now(timezone.utc) - created).total_seconds()
+            if elapsed < 60:
+                raise HTTPException(status_code=429, detail=f"재발송은 {int(60 - elapsed)}초 후에 가능합니다.")
+
         # 6자리 인증 코드 생성
         code = f"{random.randint(0, 999999):06d}"
-        expires_at = datetime.utcnow() + timedelta(minutes=5)
+        expires_at = datetime.now(timezone.utc) + timedelta(minutes=5)
 
         # 기존 미인증 코드 삭제 후 새 코드 저장
         cursor.execute("DELETE FROM email_verification WHERE email = %s AND verified = FALSE", (request.email,))
@@ -290,7 +331,7 @@ async def verify_code(request: VerifyCodeRequest, db=Depends(get_db)):
 
     try:
         cursor.execute(
-            "SELECT id, code, expires_at FROM email_verification "
+            "SELECT id, code, expires_at, attempts FROM email_verification "
             "WHERE email = %s AND verified = FALSE ORDER BY created_at DESC LIMIT 1",
             (request.email,)
         )
@@ -299,11 +340,24 @@ async def verify_code(request: VerifyCodeRequest, db=Depends(get_db)):
         if not record:
             raise HTTPException(status_code=404, detail="인증 요청을 찾을 수 없습니다.")
 
-        if datetime.utcnow() > record['expires_at']:
+        # 시도 횟수 초과 확인 (5회)
+        if record['attempts'] >= 5:
+            raise HTTPException(status_code=429, detail="인증 시도 횟수를 초과했습니다. 코드를 다시 발송해주세요.")
+
+        expires = record['expires_at']
+        if expires.tzinfo is None:
+            expires = expires.replace(tzinfo=timezone.utc)
+        if datetime.now(timezone.utc) > expires:
             raise HTTPException(status_code=410, detail="인증 코드가 만료되었습니다. 다시 발송해주세요.")
 
         if record['code'] != request.code:
-            raise HTTPException(status_code=400, detail="인증 코드가 일치하지 않습니다.")
+            cursor.execute(
+                "UPDATE email_verification SET attempts = attempts + 1 WHERE id = %s",
+                (record['id'],)
+            )
+            db.commit()
+            remaining = 4 - record['attempts']
+            raise HTTPException(status_code=400, detail=f"인증 코드가 일치하지 않습니다. ({remaining}회 남음)")
 
         # 인증 완료 처리
         cursor.execute("UPDATE email_verification SET verified = TRUE WHERE id = %s", (record['id'],))
@@ -334,11 +388,12 @@ async def signup(request: SignupRequest, db=Depends(get_db)):
         if cursor.fetchone():
             raise HTTPException(status_code=409, detail="이미 가입된 이메일입니다.")
 
-        # 유저 생성
+        # 유저 생성 (비밀번호 bcrypt 해싱)
+        hashed_pw = bcrypt.hashpw(request.password.encode(), bcrypt.gensalt()).decode()
         cursor.execute(
             "INSERT INTO user (id, password, user_name, login_type, email) "
             "VALUES (%s, %s, %s, 'email', %s)",
-            (request.email, request.password, request.user_name, request.email)
+            (request.email, hashed_pw, request.user_name, request.email)
         )
         user_id = cursor.lastrowid
 
