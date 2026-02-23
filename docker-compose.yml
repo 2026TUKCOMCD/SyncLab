@@ -1,0 +1,93 @@
+version: '3.8'
+
+services:
+  # =============================================
+  # DB - MySQL
+  # =============================================
+  db:
+    image: mysql:8.0
+    container_name: synclab-db
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
+      MYSQL_DATABASE: ${DB_NAME}
+      MYSQL_USER: ${DB_USER}
+      MYSQL_PASSWORD: ${DB_PASSWORD}
+    volumes:
+      # DB 데이터 영구 보관 (컨테이너 삭제해도 데이터 유지)
+      - mysql_data:/var/lib/mysql
+    ports:
+      # 외부에서 DB 직접 접근 (개발용, 운영에선 제거 가능)
+      - "3306:3306"
+    networks:
+      - synclab-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${DB_PASSWORD}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # =============================================
+  # 백엔드 - FastAPI (uvicorn)
+  # =============================================
+  backend:
+    build:
+      context: ./synclab-backend
+      dockerfile: Dockerfile
+    container_name: synclab-backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # DB_HOST를 컨테이너 서비스명으로 덮어씀 (localhost 대신 'db' 사용)
+      DB_HOST: db
+    volumes:
+      - exports_data:/app/exports
+    ports:
+      # 개발용 직접 접근 (운영에선 제거 가능)
+      - "3000:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - synclab-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # =============================================
+  # 프론트엔드 - React + nginx
+  # =============================================
+  frontend:
+    build:
+      context: ./web
+      dockerfile: Dockerfile
+    container_name: synclab-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - synclab-network
+
+# =============================================
+# 볼륨
+# =============================================
+volumes:
+  mysql_data:
+    driver: local
+  exports_data:
+    driver: local
+
+# =============================================
+# 네트워크
+# =============================================
+networks:
+  synclab-network:
+    driver: bridge
