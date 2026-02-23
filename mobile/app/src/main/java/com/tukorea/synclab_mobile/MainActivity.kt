@@ -3,6 +3,7 @@ package com.tukorea.synclab_mobile
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.background
@@ -48,6 +49,7 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        enableEdgeToEdge()
         NetworkClient.init(applicationContext)
         KakaoSdk.init(this, BuildConfig.KAKAO_NATIVE_APP_KEY)
         setContent {
@@ -95,7 +97,6 @@ fun MainAppScaffold() {
                 NavigationBar(
                     containerColor = Color.White,
                     tonalElevation = 8.dp,
-                    modifier = Modifier.height(80.dp)
                 ) {
                     bottomNavItems.forEach { screen ->
                         val selected = currentDestination?.hierarchy?.any { it.route == screen.route } == true

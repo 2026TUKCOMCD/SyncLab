@@ -2,7 +2,6 @@ package com.tukorea.synclab_mobile.ui.screens.upload
 
 import android.content.Context
 import android.util.Log
-import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import androidx.work.workDataOf
@@ -10,8 +9,6 @@ import com.google.gson.Gson
 import com.tukorea.synclab_mobile.api.NetworkClient
 import com.tukorea.synclab_mobile.data.model.VideoMetadata
 import com.tukorea.synclab_mobile.data.repository.UploadRepository
-import com.tukorea.synclab_mobile.utils.userSettingsStore // DataStore 위치 임포트
-import kotlinx.coroutines.flow.first
 import java.io.File
 
 class VideoUploadWorker(
@@ -21,18 +18,7 @@ class VideoUploadWorker(
 
     private lateinit var uploadRepository: UploadRepository
 
-    // DataStore 키 정의 (SettingsViewModel과 동일)
-    private val AUTO_UPLOAD_KEY = booleanPreferencesKey("auto_upload")
-
     override suspend fun doWork(): Result {
-        val preferences = applicationContext.userSettingsStore.data.first()
-        val isAutoUploadEnabled = preferences[AUTO_UPLOAD_KEY] ?: false
-
-        if (!isAutoUploadEnabled) {
-            Log.d("VideoUploadWorker", "🚫 자동 업로드 설정이 꺼져 있어 작업을 중단합니다.")
-            return Result.success()
-        }
-
         NetworkClient.init(applicationContext)
         uploadRepository = UploadRepository()
 
