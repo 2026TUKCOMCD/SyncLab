@@ -9,6 +9,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
+import androidx.navigation.NavType
+import androidx.navigation.navArgument
 import com.tukorea.synclab_mobile.Screen
 import com.tukorea.synclab_mobile.ui.screens.auth.LoginScreen
 import com.tukorea.synclab_mobile.ui.screens.auth.SignupScreen
@@ -19,6 +21,8 @@ import com.tukorea.synclab_mobile.ui.components.PermissionRequestScreen
 import com.tukorea.synclab_mobile.ui.screens.home.HomeScreen
 import com.tukorea.synclab_mobile.ui.screens.home.HomeViewModel
 import com.tukorea.synclab_mobile.ui.screens.settings.SettingsScreen
+import com.tukorea.synclab_mobile.ui.screens.live.LiveCameraScreen
+import com.tukorea.synclab_mobile.ui.screens.live.LiveControllerScreen
 
 @Composable
 fun NavGraph(
@@ -72,7 +76,7 @@ fun NavGraph(
 
         // 2. 홈 화면
         composable(route = Screen.Home.route) {
-            HomeScreen(viewModel = sharedHomeViewModel)
+            HomeScreen(viewModel = sharedHomeViewModel, navController = navController)
         }
 
         val navigateToHome = {
@@ -96,6 +100,34 @@ fun NavGraph(
         composable(route = Screen.Upload.route) {
             BackHandler { navigateToHome() }
             UploadScreen(navController = navController, homeViewModel = sharedHomeViewModel)
+        }
+
+        // 6. 라이브 카메라 화면
+        composable(
+            route = Screen.LiveCamera.route,
+            arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
+            BackHandler { navigateToHome() }
+            LiveCameraScreen(
+                navController = navController,
+                homeViewModel = sharedHomeViewModel,
+                sessionId = sessionId
+            )
+        }
+
+        // 7. 라이브 컨트롤러 화면
+        composable(
+            route = Screen.LiveController.route,
+            arguments = listOf(navArgument("sessionId") { type = NavType.StringType })
+        ) { backStackEntry ->
+            val sessionId = backStackEntry.arguments?.getString("sessionId") ?: ""
+            BackHandler { navigateToHome() }
+            LiveControllerScreen(
+                navController = navController,
+                homeViewModel = sharedHomeViewModel,
+                sessionId = sessionId
+            )
         }
 
         // 5. 설정 화면

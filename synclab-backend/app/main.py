@@ -4,6 +4,7 @@ from fastapi.staticfiles import StaticFiles
 from app.routers import web_video
 from app.routers import web_auth , mobile_session ,mobile_video, mobile_auth, mobile_home
 from app.routers import session
+from app.routers import live_session
 from app.database.connection import test_connection
 import os
 from dotenv import load_dotenv
@@ -49,6 +50,7 @@ app.include_router(mobile_session.router)
 app.include_router(mobile_video.router)
 app.include_router(mobile_auth.router)
 app.include_router(mobile_home.router)
+app.include_router(live_session.router)
 
 # 시작 이벤트
 @app.on_event("startup")

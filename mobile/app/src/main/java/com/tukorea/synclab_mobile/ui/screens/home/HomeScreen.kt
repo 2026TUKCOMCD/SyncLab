@@ -4,7 +4,9 @@ import android.util.Log
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.background
+import androidx.navigation.NavController
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -35,7 +37,8 @@ import kotlinx.coroutines.delay
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
-    viewModel: HomeViewModel
+    viewModel: HomeViewModel,
+    navController: NavController? = null
 ) {
     var showCreateDialog by remember { mutableStateOf(false) }
     var showJoinDialog by remember { mutableStateOf(false) }
@@ -221,7 +224,7 @@ fun HomeScreen(
             }
 
             item {
-                CurrentSessionCard(viewModel = viewModel)
+                CurrentSessionCard(viewModel = viewModel, navController = navController)
             }
 
             // 최근 영상 처리 상태
@@ -290,9 +293,10 @@ fun ActionCard(title: String, icon: ImageVector, containerColor: Color, contentC
 }
 
 @Composable
-fun CurrentSessionCard(viewModel: HomeViewModel) {
+fun CurrentSessionCard(viewModel: HomeViewModel, navController: NavController? = null) {
     val session = viewModel.currentSession
     val clipboardManager = LocalClipboardManager.current
+    var selectedMode by remember { mutableStateOf<String?>(null) }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -349,6 +353,55 @@ fun CurrentSessionCard(viewModel: HomeViewModel) {
                         }
                     }
                 }
+            // 모드 선택 탭 (세션 있고 로그인 유저일 때)
+            if (session != null && !viewModel.isGuest && navController != null) {
+                Spacer(modifier = Modifier.height(16.dp))
+                HorizontalDivider(color = Color(0xFFF1F5F9))
+                Spacer(modifier = Modifier.height(12.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    SessionModeTab(
+                        title = "📝 편집",
+                        isSelected = selectedMode == "edit",
+                        modifier = Modifier.weight(1f),
+                        onClick = { selectedMode = if (selectedMode == "edit") null else "edit" }
+                    )
+                    SessionModeTab(
+                        title = "📡 라이브",
+                        isSelected = selectedMode == "live",
+                        modifier = Modifier.weight(1f),
+                        onClick = { selectedMode = if (selectedMode == "live") null else "live" }
+                    )
+                }
+                AnimatedVisibility(visible = selectedMode == "live") {
+                    val sessionId = session.sessionId
+                    Row(
+                        modifier = Modifier
+                            .padding(top = 10.dp)
+                            .fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { navController.navigate("live_camera/$sessionId") },
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFDC2626))
+                        ) {
+                            Text("카메라", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                        Button(
+                            onClick = { navController.navigate("live_controller/$sessionId") },
+                            modifier = Modifier.weight(1f).height(44.dp),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF16A34A))
+                        ) {
+                            Text("컨트롤러", fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
             } else {
                 Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
                     Icon(Icons.Default.Info, null, tint = Color(0xFFCBD5E1), modifier = Modifier.size(32.dp))
@@ -356,6 +409,24 @@ fun CurrentSessionCard(viewModel: HomeViewModel) {
                     Text("참여 중인 세션이 없습니다.", fontSize = 14.sp, color = Color(0xFF94A3B8))
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun SessionModeTab(title: String, isSelected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Surface(
+        modifier = modifier.height(40.dp).clickable { onClick() },
+        color = if (isSelected) Color(0xFF3366FF) else Color(0xFFF1F5F9),
+        shape = RoundedCornerShape(10.dp)
+    ) {
+        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+            Text(
+                title,
+                color = if (isSelected) Color.White else Color(0xFF64748B),
+                fontSize = 13.sp,
+                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+            )
         }
     }
 }

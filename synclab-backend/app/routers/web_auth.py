@@ -3,6 +3,7 @@
 
 import mysql.connector
 import jwt # JSON Web Token 패키지 -> 사용자의 상태 정보 유지 목적
+import bcrypt
 from datetime import datetime, timedelta # 시간 계산용
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.models.schemas import Usercreate, Userlogin
@@ -40,9 +41,10 @@ def signup(user_data: Usercreate, db = Depends(get_db)):
         if existing_user:
             raise HTTPException(status_code = 409, detail="이미 존재하는 아이디입니다.")
         
-        # 회원가입 성공 시 데이터 저장
+        # 회원가입 성공 시 데이터 저장 (비밀번호 bcrypt 해싱)
+        hashed_pw = bcrypt.hashpw(user_data.password.encode(), bcrypt.gensalt()).decode()
         sql_insert = "INSERT INTO user (id, password, user_name) VALUES (%s, %s, %s)"
-        cursor.execute(sql_insert, (user_data.id, user_data.password, user_data.user_name))
+        cursor.execute(sql_insert, (user_data.id, hashed_pw, user_data.user_name))
 
         db.commit()
 
@@ -71,7 +73,14 @@ def login(user_data: Userlogin, db = Depends(get_db)):
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="존재하지 않는 아이디입니다."
                 )
-        if existing_user['password'] != user_data.password: # 아이디는 일치하지만 비밀번호가 일치하지 않음
+        try:
+            password_ok = bool(
+                existing_user['password'] and
+                bcrypt.checkpw(user_data.password.encode(), existing_user['password'].encode())
+            )
+        except (ValueError, TypeError):
+            password_ok = False
+        if not password_ok: # 아이디는 일치하지만 비밀번호가 일치하지 않음
             raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="비밀번호가 일치하지 않습니다."

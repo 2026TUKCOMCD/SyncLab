@@ -105,7 +105,12 @@ async def login(request: UserLogin, db=Depends(get_db)):
         cursor.execute(query, (request.id,))
         user = cursor.fetchone()
 
-        if not user or not user['password'] or not bcrypt.checkpw(request.password.encode(), user['password'].encode()):
+        try:
+            password_ok = bool(user and user['password'] and bcrypt.checkpw(request.password.encode(), user['password'].encode()))
+        except (ValueError, TypeError):
+            password_ok = False
+
+        if not password_ok:
             _record_failed_login(request.id)
             raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 틀렸습니다.")
 

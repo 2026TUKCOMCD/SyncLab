@@ -3,6 +3,9 @@ import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import axios from 'axios'
 import React, { useState, useRef, useEffect } from 'react';
+
+// API 베이스 URL: REACT_APP_API_URL 환경변수 → 없으면 빈 문자열(상대경로, Docker nginx 프록시 사용)
+const API_BASE = process.env.REACT_APP_API_URL || '';
 // useEffect()는 화면이 구성된 뒤에 실행되어 재랜더링 하는 방식이지만 useState는 랜더링 이전에 수행되어 불필요한 랜더링이 발생하지 않음.
 // useRef()는 랜더링 되어도 변하지 않는 참조 변수 또는 객체
 
@@ -42,7 +45,7 @@ function EditPage() {
     const fetchSessions = async () => {
       const token = localStorage.getItem('accessToken');
       try {
-        const response = await axios.get(`https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/web/sessions`, { // Token에 들어있는 user_id로 세션 조회 시도
+        const response = await axios.get(`${API_BASE}/api/web/sessions`, { // Token에 들어있는 user_id로 세션 조회 시도
           headers: { Authorization: `Bearer ${token}` }
         });
         const sessions = response.data?.sessions || [];
@@ -72,7 +75,7 @@ function EditPage() {
       }
       // GET 요청 수행
       try {
-        const response = await axios.get(`https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/web/list/${activeSessionId}`, { // activeSessionId(현재 선택한 session)를 통해 해당 세션의 비디오 목록 조회
+        const response = await axios.get(`${API_BASE}/api/web/list/${activeSessionId}`, { // activeSessionId(현재 선택한 session)를 통해 해당 세션의 비디오 목록 조회
           headers: {
             Authorization: `Bearer ${token}` // Header에 토큰 값 실어서 보내기
           }
@@ -404,7 +407,7 @@ function EditPage() {
     }
     try {
       const token = localStorage.getItem('accessToken');
-      const response = await axios.post('https://overapprehensive-nonasbestine-rodney.ngrok-free.dev/api/web/save_edit_data', payload, {
+      const response = await axios.post(`${API_BASE}/api/web/save_edit_data`, payload, {
         headers: { Authorization: `Bearer ${token}` }
       });
       alert("편집 정보가 성공적으로 저장되었습니다!");

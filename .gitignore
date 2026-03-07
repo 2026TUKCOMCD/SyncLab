@@ -31,3 +31,6 @@ package.json
 
 .claude
 bill/
+
+# 개인 작업 문서
+LIVE_STREAMING_PROMPTS.mdnul

@@ -33,6 +33,8 @@ android {
             excludes += "/META-INF/INDEX.LIST"
             excludes += "/META-INF/io.netty.versions.properties"
             excludes += "/META-INF/DEPENDENCIES"
+            excludes += "google/protobuf/*.proto"
+            excludes += "google/protobuf/**/*.proto"
         }
     }
 
@@ -91,6 +93,11 @@ android {
         // [필수 추가] BuildConfig 기능 활성화
         buildConfig = true
     }
+}
+
+// protobuf-java와 protobuf-javalite 충돌 방지 (Android는 javalite만 사용)
+configurations.all {
+    exclude(group = "com.google.protobuf", module = "protobuf-java")
 }
 
 dependencies {
@@ -167,6 +174,11 @@ dependencies {
     // Kakao SDK (Login)
     implementation("com.kakao.sdk:v2-user:2.20.6")
 
+    // LiveKit Android SDK
+    implementation("io.livekit:livekit-android:2.23.4")
+    implementation("io.livekit:livekit-android-compose-components:2.2.0")
+
     // 토큰 암호화 저장
     implementation("androidx.security:security-crypto:1.1.0-alpha06")
+
 }

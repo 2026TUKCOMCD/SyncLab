@@ -1,0 +1,25 @@
+version: "2"
+
+# ============================================================
+# ngrok 설정 파일
+# 사용법:
+#   1. https://dashboard.ngrok.com 에서 authtoken 복사
+#   2. 아래 authtoken 값 입력
+#   3. 터미널에서 실행: ngrok start --all --config ngrok.yml
+# ============================================================
+
+authtoken: 3A6JDzHY0dG3U3Coqp8ryVq7nfy_7Eq4Lys4BBpmGzPAn2yrC
+
+tunnels:
+  # 메인 앱 (React 웹 + FastAPI 프록시) → 포트 80
+  main:
+    proto: http
+    addr: 80
+    # 이 URL을 .env의 NGROK_URL, BASE_URL에 입력
+
+  # LiveKit WebSocket 서버 → 포트 7880
+  livekit:
+    proto: http
+    addr: 7880
+    # 이 URL을 .env의 LIVEKIT_URL에 입력 (ws:// → wss:// 로 변경)
+    # ex) wss://def456.ngrok-free.app

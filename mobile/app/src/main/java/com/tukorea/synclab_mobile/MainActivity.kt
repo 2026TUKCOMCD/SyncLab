@@ -15,6 +15,8 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VideoCall
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,6 +46,9 @@ sealed class Screen(val route: String, val label: String, val icon: ImageVector)
     object Upload : Screen("upload", "업로드", Icons.Default.CloudUpload) // fa-cloud-arrow-up 스타일
     object Settings : Screen("settings", "설정", Icons.Default.Settings) // fa-gear 스타일
     object Signup : Screen("signup", "회원가입", Icons.Default.Lock)
+    // 라이브 스트리밍 화면 (sessionId argument 포함)
+    object LiveCamera : Screen("live_camera/{sessionId}", "라이브 카메라", Icons.Default.VideoCall)
+    object LiveController : Screen("live_controller/{sessionId}", "라이브 컨트롤", Icons.Default.Tv)
 }
 
 class MainActivity : ComponentActivity() {
@@ -73,7 +78,12 @@ fun MainAppScaffold() {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
 
-    val showBottomBar = currentDestination?.route != Screen.Login.route
+    val showBottomBar = currentDestination?.route !in listOf(
+        Screen.Login.route,
+        Screen.Signup.route,
+        Screen.LiveCamera.route,
+        Screen.LiveController.route
+    )
 
     LaunchedEffect(Unit) {
         NtpSyncManager.checkAndSync(isRecording = false)

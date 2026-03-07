@@ -4,6 +4,7 @@ import android.content.Context
 import com.tukorea.synclab_mobile.BuildConfig
 import com.tukorea.synclab_mobile.data.api.AuthService
 import com.tukorea.synclab_mobile.data.api.HomeService
+import com.tukorea.synclab_mobile.data.api.LiveApiService
 import com.tukorea.synclab_mobile.data.api.VideoUploadService
 import com.tukorea.synclab_mobile.utils.AuthManager
 import okhttp3.Interceptor
@@ -77,4 +78,5 @@ object NetworkClient {
     val service: VideoUploadService get() = getRetrofit().create(VideoUploadService::class.java)
     val homeService: HomeService get() = getRetrofit().create(HomeService::class.java)
     val authService: AuthService get() = getRetrofit().create(AuthService::class.java)
+    val liveService: LiveApiService get() = getRetrofit().create(LiveApiService::class.java)
 }

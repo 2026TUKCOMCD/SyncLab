@@ -40,7 +40,7 @@ class VideoEditServer:
             raise Exception(f"FFmpeg Error: {e.stderr.decode()}")
 
         # 26.2.19  업데이트 : 자르기 후에도 오디오 싱크가 맞도록, 모든 클립을 동일한 규격으로 변환하는 과정(하나의 영상을 기준으로 소리를 통합.) // 정상적으로 작동할시에 아래 주석으로된 원래 코드 삭제.
-def merge_segments_with_single_audio(self, segments: list, main_audio_url: str, start_time: float, total_duration: float, output_path: str):
+    def merge_segments_with_single_audio(self, segments: list, main_audio_url: str, start_time: float, total_duration: float, output_path: str):
         """
         영상은 합치되, 오디오는 특정 원본 영상(main_audio_url)의 것만 가져와서 덮어씌움
         """
