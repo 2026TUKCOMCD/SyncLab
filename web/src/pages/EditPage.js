@@ -281,22 +281,36 @@ function EditPage() {
     if (!isDraggingIn && !isDraggingOut) return;
     if (!timelineRef.current) return;
 
-    // 타임라인 내부의 시간으로 변환하는 수학 로직 -> handleTimeLineCLick의 로직과 유사함
     const rect = timelineRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
     const percent = x / rect.width;
-    let newTime = Math.max(0, Math.min(percent * duration, duration));
+
+    // 기준을 전체 세션 시간으로 통일
+    let newTime = Math.max(0, Math.min(percent * totalSessionDuration, totalSessionDuration));
 
     if (isDraggingIn) {
-      if (outPoint !== null && newTime >= outPoint) newTime = outPoint - 0.1; // 새로운 시작점은 앞선 종료점보다 앞에 올 수 없도록 제어
-      const conflictClip = savedClips.find(clip => newTime >= clip.start_seek && newTime < clip.end_seek);
-      if (conflictClip) newTime = conflictClip.end_seek; // 이미 생성되어 있는 클립과 겹칠 경우 클립의 종료점을 시작점으로 설정
+      if (outPoint !== null && newTime >= outPoint) newTime = outPoint - 0.1;
+
+      // [수정] 이미 생성된 클립의 'global_out'보다 앞으로 갈 수 없게 제한
+      // 현재 드래그하는 시간보다 앞에 있는 클립 중 가장 마지막(가장 큰) out 값을 찾음
+      const previousClips = savedClips.filter(clip => clip.global_out <= (outPoint || totalSessionDuration));
+      if (previousClips.length > 0) {
+        const latestOut = Math.max(...previousClips.map(c => c.global_out));
+        if (newTime < latestOut) newTime = latestOut;
+      }
+
       setInPoint(newTime);
     }
     else if (isDraggingOut) {
-      if (inPoint !== null && newTime <= inPoint) newTime = inPoint + 0.1; // 새로운 종료점은 시작점보다 앞에 올 수 없도록 제어
-      const conflictClip = savedClips.find(clip => newTime > clip.start_seek && newTime <= clip.end_seek);
-      if (conflictClip) newTime = conflictClip.start_seek; // 이미 생성되어 있는 클립과 겹칠 경우 클립의 종료지점을 앞선 클립의 시작지점으로 이동
+      if (inPoint !== null && newTime <= inPoint) newTime = inPoint + 0.1;
+
+      // [수정] 뒤에 있는 클립의 'global_in'을 넘지 못하게 제한
+      const futureClips = savedClips.filter(clip => clip.global_in >= inPoint);
+      if (futureClips.length > 0) {
+        const earliestIn = Math.min(...futureClips.map(c => c.global_in));
+        if (newTime > earliestIn) newTime = earliestIn;
+      }
+
       setOutPoint(newTime);
     }
   };
@@ -359,7 +373,7 @@ function EditPage() {
       global_in: inPoint,
       global_out: outPoint
     };
-    const sortedClips = [...savedClips, newClip].sort((a, b) => a.start_seek - b.start_seek); // 저장된 클립들을 시작 시점과 종료 시점으로 정렬 -> 사용자가 클립의 순서를 꼬아놔도 영상의 진행 순서대로 정렬됨
+    const sortedClips = [...savedClips, newClip].sort((a, b) => a.global_in - b.global_in); // 저장된 클립들을 시작 시점과 종료 시점으로 정렬 -> 사용자가 클립의 순서를 꼬아놔도 영상의 진행 순서대로 정렬됨
     const updatedClips = sortedClips.map((clip, index) => ({
       ...clip,
       sequence: index + 1
@@ -756,8 +770,8 @@ function EditPage() {
                     <div
                       className="selection-region"
                       style={{
-                        left: `${(inPoint / duration) * 100}%`,
-                        width: `${((outPoint - inPoint) / duration) * 100}%`,
+                        left: `${(inPoint / totalSessionDuration) * 100}%`,
+                        width: `${((outPoint - inPoint) / totalSessionDuration) * 100}%`,
                       }}
                     />
                   )}
@@ -805,45 +819,50 @@ function EditPage() {
                 ) : (
                   /* EditPage.js 내 타임라인 렌더링 부분 */
 
+                  /* EditPage.js 내 타임라인 렌더링 부분 수정 */
                   <div className="clips-track">
-                    {savedClips.map((clip) => (
-                      <div
-                        key={clip.id}
-                        className="clip-wrapper"
-                        style={{
-                          left: `${(clip.global_in / totalSessionDuration) * 100}%`,
-                          width: `${(clip.duration / totalSessionDuration) * 100}%`,
-                        }}
-                      >
+                    {savedClips.map((clip) => {
+                      // 1. 전체 세션 길이 대비 클립의 시작 위치 비율
+                      const leftPos = (clip.global_in / totalSessionDuration) * 100;
+
+                      // 2. 전체 세션 길이 대비 클립의 길이(너비) 비율
+                      const widthSize = ((clip.global_out - clip.global_in) / totalSessionDuration) * 100;
+
+                      return (
                         <div
-                          className="clip-item-content"
+                          key={clip.id}
+                          className="clip-wrapper"
                           style={{
-                            backgroundColor: cameras[clip.cam].color,
-                            border: `2px solid ${cameras[clip.cam].color}`,
-                            boxShadow: `0 0 12px ${cameras[clip.cam].color}, inset 0 0 6px ${cameras[clip.cam].color}`,
+                            position: 'absolute', // 절대 위치 지정
+                            left: `${leftPos}%`,
+                            width: `${widthSize}%`,
+                            height: '100%',
                           }}
                         >
-                          <div className="clip-info" style={{ textAlign: 'center' }}>
-                            <div className="clip-info-text-main">
-                              {cameras[clip.cam].name}
-                            </div>
-                            <div className="clip-info-text-sub">
-                              {formatTime(clip.duration)}
-                            </div>
-                          </div>
-
-                          <button
-                            className="btn-clip-delete"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeClip(clip.id);
+                          <div
+                            className="clip-item-content"
+                            style={{
+                              backgroundColor: cameras.find(c => c.id === clip.cam)?.color, // ID 기반으로 색상 찾기
+                              border: `2px solid ${cameras.find(c => c.id === clip.cam)?.color}`,
+                              display: 'flex',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              height: '100%',
+                              borderRadius: '4px',
+                              position: 'relative'
                             }}
                           >
-                            ×
-                          </button>
+                            {/* 클립 텍스트 및 삭제 버튼 */}
+                            <div className="clip-info">
+                              <div className="clip-info-text-main" style={{ fontSize: '12px', fontWeight: 'bold' }}>
+                                {cameras.find(c => c.id === clip.cam)?.name}
+                              </div>
+                            </div>
+                            <button className="btn-clip-delete" onClick={() => removeClip(clip.id)}>×</button>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
