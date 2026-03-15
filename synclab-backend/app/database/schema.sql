@@ -109,8 +109,11 @@ CREATE TABLE email_verification (
 -- ==============================================================
 -- 테스트 데이터 삽입
 -- ==============================================================
--- 테스트 계정: id=111, password=111 (bcrypt 해시)
-INSERT INTO user (id, password, user_name) VALUES ('111', '$2b$12$1TIIiftu25WkN29LNmeVe..gy0QN3wonmgQ5Lm/JsJbUuLq5M.mkO', '테스트 관리자');
+-- 테스트 계정 (id/password: 111/111, 222/222, 333/333, 444/444)
+INSERT INTO user (id, password, user_name, login_type) VALUES ('111', '$2b$12$hBB2uM7IjHdD8v8732GFX.cwPDWzV./A2sNa8/m/E2jt3x8P9xBBS', 'User1', 'local');
+INSERT INTO user (id, password, user_name, login_type) VALUES ('222', '$2b$12$QbTZL9AzotiC5Rgj6lM.leB.XU4qHss42N4.Lvubeb1c4NWPiHuU6', 'User2', 'local');
+INSERT INTO user (id, password, user_name, login_type) VALUES ('333', '$2b$12$brLoSTl0ZboBUmXMLo75RurnDmPajfbwMD3RBpaqph3/pzjnJNyFC', 'User3', 'local');
+INSERT INTO user (id, password, user_name, login_type) VALUES ('444', '$2b$12$kL2xiSj1X/qtGvbT.gVZYe4LpyBUbnSgpl6CjS6w/frUdllSCKzC2', 'User4', 'local');
 
 SELECT '✅ SyncLab 스키마(문자열 ID 최적화) 생성 완료!' AS status;
 SHOW TABLES;

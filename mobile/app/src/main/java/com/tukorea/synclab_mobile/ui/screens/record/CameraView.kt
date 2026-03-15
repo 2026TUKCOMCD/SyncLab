@@ -3,7 +3,9 @@ package com.tukorea.synclab_mobile.ui.screens.record
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
+import android.os.Build
 import android.util.Log
+import android.view.Surface
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.Preview
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -29,6 +31,7 @@ import java.util.concurrent.Executor
 @Composable
 fun CameraView(
     modifier: Modifier = Modifier,
+    isPortrait: Boolean,
     isRecording: Boolean,
     sessionId: String,
     onRecordingStarted: (Recording) -> Unit,
@@ -48,8 +51,8 @@ fun CameraView(
     }
     val videoCaptureState = remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
 
-    // 1. 카메라 바인딩 로직
-    LaunchedEffect(Unit) {
+    // 방향이 바뀔 때마다 카메라 재바인딩하여 targetRotation 갱신
+    LaunchedEffect(isPortrait) {
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
         cameraProviderFuture.addListener({
             val cameraProvider = cameraProviderFuture.get()
@@ -60,18 +63,34 @@ fun CameraView(
                 .setQualitySelector(QualitySelector.from(Quality.FHD, FallbackStrategy.higherQualityOrLowerThan(Quality.FHD)))
                 .build()
             val videoCapture = VideoCapture.withOutput(recorder)
+
+            // 현재 디스플레이 회전을 targetRotation에 반영 → 촬영 방향 메타데이터 정확히 기록
+            val displayRotation = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                context.display?.rotation ?: Surface.ROTATION_0
+            } else {
+                @Suppress("DEPRECATION")
+                (context.getSystemService(Context.WINDOW_SERVICE) as android.view.WindowManager)
+                    .defaultDisplay.rotation
+            }
+            videoCapture.targetRotation = displayRotation
+
             videoCaptureState.value = videoCapture
 
             try {
                 cameraProvider.unbindAll()
-                cameraProvider.bindToLifecycle(lifecycleOwner, CameraSelector.DEFAULT_BACK_CAMERA, preview, videoCapture)
+                cameraProvider.bindToLifecycle(
+                    lifecycleOwner,
+                    CameraSelector.DEFAULT_BACK_CAMERA,
+                    preview,
+                    videoCapture
+                )
             } catch (e: Exception) {
                 Log.e("CameraView", "Binding failed", e)
             }
         }, mainExecutor)
     }
 
-    // 2. 녹화 제어 로직
+    // 녹화 제어 로직
     LaunchedEffect(isRecording) {
         if (isRecording) {
             val videoCapture = videoCaptureState.value ?: return@LaunchedEffect
@@ -128,12 +147,11 @@ private suspend fun handleUploadLogic(
     }
 }
 
-// requireWifi가 true이면 UNMETERED(와이파이), false이면 CONNECTED(모든 네트워크)
 private fun enqueueWork(context: Context, file: File, requireWifi: Boolean, sessionId: String) {
     val networkType = if (requireWifi) NetworkType.UNMETERED else NetworkType.CONNECTED
 
     val constraints = Constraints.Builder()
-        .setRequiredNetworkType(networkType) // 👈 시스템이 와이파이 연결 시점을 자동으로 감지
+        .setRequiredNetworkType(networkType)
         .setRequiresStorageNotLow(true)
         .build()
 
@@ -153,5 +171,5 @@ private fun enqueueWork(context: Context, file: File, requireWifi: Boolean, sess
         request
     )
 
-    Log.d("UploadFlow", "WorkManager 예약 완료 - 모드: ${if(requireWifi) "Wi-Fi Only" else "Any Network"}")
+    Log.d("UploadFlow", "WorkManager 예약 완료 - 모드: ${if (requireWifi) "Wi-Fi Only" else "Any Network"}")
 }

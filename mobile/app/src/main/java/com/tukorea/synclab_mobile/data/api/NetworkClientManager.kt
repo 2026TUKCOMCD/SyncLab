@@ -77,4 +77,9 @@ object NetworkClient {
     val service: VideoUploadService get() = getRetrofit().create(VideoUploadService::class.java)
     val homeService: HomeService get() = getRetrofit().create(HomeService::class.java)
     val authService: AuthService get() = getRetrofit().create(AuthService::class.java)
+<<<<<<< HEAD
 }
+=======
+    val liveService: LiveApiService get() = getRetrofit().create(LiveApiService::class.java)
+}
+>>>>>>> 31dbb92 (feat: 카메라 방향 대응 및 설정 개선)
