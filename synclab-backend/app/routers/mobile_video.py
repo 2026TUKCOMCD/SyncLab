@@ -36,25 +36,31 @@ s3_client = boto3.client(
 # 백그라운드 작업 (프록시 생성)
 # ============================================
 
-async def create_proxy_video(original_key: str, video_id: int):
+async def create_proxy_video(original_key: str, video_id: int, orientation: str = "portrait"):
     try:
         # original_key 예: "701/filename.mp4"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         original_local_path = os.path.join(TEMP_DIR, f"{timestamp}_original.mp4")
         proxy_local_path = os.path.join(TEMP_DIR, f"{timestamp}_proxy.mp4")
         proxy_s3_key = original_key.replace(".mp4", "_proxy.mp4")
-        
+
         # 1. 원본 다운로드
         s3_client.download_file(S3_BUCKET_ORIGINAL, original_key, original_local_path)
-        
-        # 2. FFmpeg 변환 (480p)
+
+        # 2. FFmpeg 변환 - 촬영 방향에 맞게 스케일 조정
+        # 세로(portrait): 480x854 / 가로(landscape): 854x480
+        if orientation == "portrait":
+            vf = 'scale=480:854:force_original_aspect_ratio=decrease,pad=480:854:(ow-iw)/2:(oh-ih)/2'
+        else:
+            vf = 'scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2'
+
         stream = ffmpeg.input(original_local_path)
         stream = ffmpeg.output(
-            stream, 
+            stream,
             proxy_local_path,
             vcodec='libx264', acodec='aac',
             video_bitrate='1M', audio_bitrate='128k',
-            vf='scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2',
+            vf=vf,
             preset='fast', crf=23, movflags='faststart'
         )
         ffmpeg.run(stream, overwrite_output=True, capture_stdout=True, capture_stderr=True)
@@ -160,7 +166,8 @@ async def complete_upload(request: CompleteUploadRequest, background_tasks: Back
             cursor.close()
         
         if video_id:
-            background_tasks.add_task(create_proxy_video, full_s3_key, video_id)
+            orientation = request.metadata.orientation
+            background_tasks.add_task(create_proxy_video, full_s3_key, video_id, orientation)
         
         return CompleteUploadResponse(
             status="success",

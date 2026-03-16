@@ -20,7 +20,10 @@ data class VideoMetadata(
     val duration: Double = 0.0,
 
     @SerializedName("session_id")
-    val sessionId: String? = null
+    val sessionId: String? = null,
+
+    @SerializedName("orientation")
+    val orientation: String = "portrait"
 ) {
     fun toJson(): String = GsonBuilder().create().toJson(this)
 

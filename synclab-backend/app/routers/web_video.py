@@ -3,6 +3,7 @@
 # fetchall()함수로 session_id에 해당하는 모든 동영상을 객체로 받는데, 2차원 배열 형식으로 저장되기 때문에 인덱스 접근 시 [0][1] 식으로 사용
 
 import jwt
+import os
 from app.services.video_sync_editor import VideoEditServer
 from fastapi import APIRouter, Depends, HTTPException, status
 from app.database.connection import get_db
@@ -11,6 +12,10 @@ from fastapi.security import OAuth2PasswordBearer # HTTP 헤더에서 토큰을 
 from app.routers.web_auth import ALGORITHM, SECRET_KEY # 로그인에서 사용했던 토큰과 알고리즘 HS256
 from pathlib import Path
 import json
+
+S3_BUCKET_ORIGINAL = os.getenv("S3_BUCKET_ORIGINAL", "synclab-1080p-mp4")
+AWS_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
+S3_BASE_URL = f"https://{S3_BUCKET_ORIGINAL}.s3.{AWS_REGION}.amazonaws.com/"
 
 print(f"비디오 파일 키: {SECRET_KEY}") # 서버 로그 확인
 router = APIRouter(prefix="/api/web")
@@ -62,7 +67,7 @@ def get_video_list(session_id: str, db = Depends(get_db)):
         cursor.execute(sql, (session_id, ))
         result = cursor.fetchall()
 
-        base_url = "https://synclab-1080p-mp4.s3.ap-northeast-2.amazonaws.com/"
+        base_url = S3_BASE_URL
 
         video_list = []
         for index, row in enumerate(result): # enumerate 함수는 인덱스와 원소로 이루어진 튜플을 반환해주는 내장 함수

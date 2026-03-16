@@ -1,5 +1,6 @@
 package com.tukorea.synclab_mobile.ui.screens.record
 
+import android.content.res.Configuration
 import android.util.Log
 import androidx.navigation.NavController
 import androidx.camera.video.Recording
@@ -14,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.work.*
@@ -30,17 +32,24 @@ import java.util.concurrent.TimeUnit
 fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+
+    // 현재 방향 감지
+    val isPortrait = configuration.orientation == Configuration.ORIENTATION_PORTRAIT
 
     val sessionId = homeViewModel.currentSession?.sessionId ?: "unknown_session"
 
     var isRecording by remember { mutableStateOf(false) }
     var currentRecording by remember { mutableStateOf<Recording?>(null) }
+    // 촬영 시작 시점의 방향을 캡처 (촬영 중 회전해도 시작 방향 기준으로 업로드)
+    var recordOrientation by remember { mutableStateOf("portrait") }
 
     var absoluteStartTime by remember { mutableLongStateOf(0L) }
     var absoluteEndTime by remember { mutableLongStateOf(0L) }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         CameraView(
+            isPortrait = isPortrait,
             isRecording = isRecording,
             sessionId = sessionId,
             onRecordingStarted = { recording ->
@@ -53,6 +62,7 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
                     startTime = absoluteStartTime,
                     endTime = absoluteEndTime,
                     sessionId = sessionId,
+                    orientation = recordOrientation,
                     onComplete = {
                         navController.navigate(Screen.Upload.route) {
                             popUpTo(Screen.Record.route) { inclusive = true }
@@ -62,6 +72,7 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
             }
         )
 
+        // 세션 ID 레이블
         Surface(
             color = Color.Black.copy(alpha = 0.5f),
             shape = CircleShape,
@@ -75,7 +86,34 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
             )
         }
 
-        Box(modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 64.dp)) {
+        // 가로 모드 표시
+        if (!isPortrait) {
+            Surface(
+                color = Color.Black.copy(alpha = 0.5f),
+                shape = CircleShape,
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 40.dp, start = 16.dp)
+            ) {
+                Text(
+                    text = "가로 모드",
+                    color = Color.White,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+
+        // 방향에 따라 녹화 버튼 위치 변경
+        // 세로: 하단 중앙 / 가로: 우측 중앙
+        val buttonAlignment = if (isPortrait) Alignment.BottomCenter else Alignment.CenterEnd
+        val buttonPadding = if (isPortrait) {
+            Modifier.padding(bottom = 64.dp)
+        } else {
+            Modifier.padding(end = 48.dp)
+        }
+
+        Box(modifier = Modifier.align(buttonAlignment).then(buttonPadding)) {
             IconButton(
                 onClick = {
                     scope.launch {
@@ -86,6 +124,8 @@ fun RecordScreen(navController: NavController, homeViewModel: HomeViewModel) {
                         } else {
                             NtpSyncManager.checkAndSync()
                             absoluteStartTime = NtpSyncManager.getCurrentNtpTime()
+                            // 촬영 시작 시점의 방향 저장
+                            recordOrientation = if (isPortrait) "portrait" else "landscape"
                             isRecording = true
                         }
                     }
@@ -111,9 +151,9 @@ private fun handleRecordingFinished(
     startTime: Long,
     endTime: Long,
     sessionId: String,
+    orientation: String,
     onComplete: () -> Unit
 ) {
-    // 1. 메타데이터 계산
     val durationSeconds = (endTime - startTime) / 1000.0
     val metadata = VideoMetadata(
         videoName = file.name,
@@ -121,10 +161,10 @@ private fun handleRecordingFinished(
         absoluteStartTime = startTime,
         absoluteEndTime = endTime,
         duration = String.format("%.3f", durationSeconds).toDouble(),
-        sessionId = sessionId
+        sessionId = sessionId,
+        orientation = orientation
     )
 
-    // 2. JSON 파일 생성
     val jsonFile = File(context.externalCacheDir, "${file.nameWithoutExtension}.json")
     try {
         jsonFile.writeText(metadata.toJson())
@@ -134,7 +174,6 @@ private fun handleRecordingFinished(
         return
     }
 
-    // 3. WorkManager 데이터 설정
     val uploadData = workDataOf(
         "video_path" to file.absolutePath,
         "json_path" to jsonFile.absolutePath,
@@ -156,7 +195,6 @@ private fun handleRecordingFinished(
         )
         .build()
 
-    // 4. 고유 작업으로 등록 (중복 방지)
     WorkManager.getInstance(context).enqueueUniqueWork(
         "upload_${file.name}",
         ExistingWorkPolicy.REPLACE,
