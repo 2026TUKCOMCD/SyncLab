@@ -16,10 +16,3 @@ tunnels:
     proto: http
     addr: 80
     # 이 URL을 .env의 NGROK_URL, BASE_URL에 입력
-
-  # LiveKit WebSocket 서버 → 포트 7880
-  livekit:
-    proto: http
-    addr: 7880
-    # 이 URL을 .env의 LIVEKIT_URL에 입력 (ws:// → wss:// 로 변경)
-    # ex) wss://def456.ngrok-free.app

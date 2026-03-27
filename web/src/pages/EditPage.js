@@ -153,6 +153,10 @@ function EditPage() {
               else {
                 v.playbackRate = 1.0;
               }
+            } else {
+              // 시작 시간 전이거나 영상 범위 밖 — 정지 및 위치 초기화
+              if (!v.paused) v.pause();
+              v.currentTime = 0;
             }
           });
           animationId = requestAnimationFrame(updateAllSync);
@@ -199,14 +203,31 @@ function EditPage() {
   const handleSourceCamClick = (camId) => {
     if (selectedSourceCam === camId) return;
     setSelectedSourceCam(camId);
-    setCurrentTime(0);
     setInPoint(null);
     setOutPoint(null);
-    setIsPlaying(false);
-    Object.values(videoRefs.current).forEach(v => {
-      if (v) v.currentTime = 0;
-    });
-    if (programVideoRef.current) programVideoRef.current.currentTime = 0;
+    // 재생 상태 유지 — 현재 시간에 맞게 모든 video 싱크
+    const newCam = cameras.find(c => c.id === camId);
+    if (newCam) {
+      const offset = (Number(newCam.start_time) - Number(minAbsStart)) / 1000;
+      const target = Math.max(0, currentTime - offset);
+      multiviewCameras.forEach(cam => {
+        if (!cam) return;
+        const v = videoRefs.current[cam.id];
+        if (!v) return;
+        const camOffset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
+        v.currentTime = Math.max(0, currentTime - camOffset);
+      });
+      // 새 masterVideo 재생 시작 — 싱크 루프가 paused 체크로 멈추지 않도록
+      const newMasterVideo = videoRefs.current[camId];
+      if (newMasterVideo) {
+        newMasterVideo.currentTime = target;
+        if (isPlaying) newMasterVideo.play().catch(() => {});
+      }
+      if (programVideoRef.current) {
+        programVideoRef.current.currentTime = target;
+        if (isPlaying) programVideoRef.current.play().catch(() => {});
+      }
+    }
   };
 
   // 비디오 리소스에서 멀티뷰 소스로 비디오 선택 시 multiCamers 배열로 비디오를 추가하는 함수
@@ -593,11 +614,19 @@ function EditPage() {
                   >
                     {cam ? (
                       <>
-                        {/* 동기화 로직: 현재 시간이 비디오 실제 시작 시점보다 전인지 체크 */}
-                        {currentTime < (Number(cam.start_time) - Number(minAbsStart)) / 1000 ? (
+                        {/* video는 항상 DOM에 유지 — 조건부 렌더링 시 unmount로 인해 재생 위치가 초기화되는 버그 방지 */}
+                        <video
+                          ref={el => { if (el) videoRefs.current[cam.id] = el; }}
+                          src={getProxyUrl(cam.videoUrl)}
+                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                          muted
+                          playsInline
+                          onLoadedMetadata={(e) => handleVideoLoaded(cam.id, e)}
+                        />
+                        {currentTime < (Number(cam.start_time) - Number(minAbsStart)) / 1000 && (
                           <div className="waiting-signal" style={{
                             position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                            alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.85)',
+                            alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,1)',
                             color: 'white', zIndex: 10
                           }}>
                             <div className="spinner"></div>
@@ -606,15 +635,6 @@ function EditPage() {
                               {Math.max(0, Math.ceil((cam.start_time - Number(minAbsStart || 0)) / 1000 - currentTime))}초 후 시작
                             </span>
                           </div>
-                        ) : (
-                          <video
-                            ref={el => { if (el) videoRefs.current[cam.id] = el; }}
-                            src={getProxyUrl(cam.videoUrl)}
-                            style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                            muted
-                            playsInline
-                            onLoadedMetadata={(e) => handleVideoLoaded(cam.id, e)}
-                          />
                         )}
 
                         <div className="cam-label" style={{ backgroundColor: cam.color || '#333' }}>
@@ -656,6 +676,11 @@ function EditPage() {
                       src={getProxyUrl(cameras.find(c => c.id === selectedSourceCam)?.videoUrl)}
                       className="program-video"
                       playsInline
+                      onCanPlay={() => {
+                        if (isPlaying && programVideoRef.current) {
+                          programVideoRef.current.play().catch(() => {});
+                        }
+                      }}
                     />
                     <div className="cam-label" style={{ backgroundColor: cameras.find(c => c.id === selectedSourceCam)?.color, top: '16px', left: '16px', fontSize: '14px' }}>
                       {cameras.find(c => c.id === selectedSourceCam)?.name}

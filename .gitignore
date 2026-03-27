@@ -34,3 +34,10 @@ bill/
 
 # 개인 작업 문서
 LIVE_STREAMING_PROMPTS.mdnul
+
+# 테스트 영상
+테스트용 영상/
+*.mp4
+*.mov
+*.avi
+*.mkv
