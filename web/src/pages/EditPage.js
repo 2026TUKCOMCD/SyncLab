@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward, Save, Plus } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Save, Plus, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import axios from 'axios'
@@ -24,6 +24,13 @@ function EditPage() {
   const programVideoRef = useRef(null);
   const timelineRef = useRef(null);
   const animationRef = useRef(null);
+  const pendingProgramSeek = useRef(null); // 카메라 전환 시 새 프로그램 비디오 seek 대기값
+  const settingsPanelRef = useRef(null);   // 드롭다운 외부 클릭 감지용
+  const [showSettings, setShowSettings] = useState(false);
+  const [playbackRate, setPlaybackRate] = useState(1);
+  const [fps, setFps] = useState(30);
+  const [skipFrames, setSkipFrames] = useState(1);
+  const [compactTimeline, setCompactTimeline] = useState(false);
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
   const [cameras, setCameras] = useState([]);
   const [sessionList, setSessionList] = useState([]); // 사용자가 참여한 여러 세션 목록을 위한 변수
@@ -116,10 +123,25 @@ function EditPage() {
     }
   }, [isDraggingIn, isDraggingOut]); // 드래그 할 때 마다 렌더링?
 
+  // 재생 속도 변경 시 모든 비디오에 즉시 반영
+  useEffect(() => {
+    Object.values(videoRefs.current).forEach(v => { if (v) v.playbackRate = playbackRate; });
+    if (programVideoRef.current) programVideoRef.current.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  // 설정 드롭다운 외부 클릭 시 닫기
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (settingsPanelRef.current && !settingsPanelRef.current.contains(e.target)) {
+        setShowSettings(false);
+      }
+    };
+    if (showSettings) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [showSettings]);
+
   // 현재 재생 중인 동영상의 시간을 보여주기 위한 함수로 타임라인의 Bar가 이동하거나 숫자 표시
   useEffect(() => {
-    let animationId;
-
     /* 동기화 재생 로직 */
     if (isPlaying && selectedSourceCam !== null) {
       const updateAllSync = () => {
@@ -159,14 +181,33 @@ function EditPage() {
               v.currentTime = 0;
             }
           });
-          animationId = requestAnimationFrame(updateAllSync);
+          animationRef.current = requestAnimationFrame(updateAllSync);
+        } else {
+          animationRef.current = null; // 루프 자연 종료 (버퍼링 등)
         }
       };
+
       animationRef.current = requestAnimationFrame(updateAllSync);
+
+      // 버퍼링 해소 시 루프 재시작
+      const masterVideo = videoRefs.current[selectedSourceCam];
+      const handleCanPlay = () => {
+        if (animationRef.current === null) {
+          animationRef.current = requestAnimationFrame(updateAllSync);
+        }
+      };
+      masterVideo?.addEventListener('canplay', handleCanPlay);
+
+      return () => {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+        masterVideo?.removeEventListener('canplay', handleCanPlay);
+      };
     }
 
     return () => {
-      if (animationId) cancelAnimationFrame(animationId);
+      cancelAnimationFrame(animationRef.current);
+      animationRef.current = null;
     };
   }, [isPlaying, selectedSourceCam, cameras, minAbsStart, multiviewCameras]); // 이 useEffect의 실행 시점은 Mount, Update로 isPlaying이나 selectedSourceCam 값이 변경될 때 렌더링, 하지만 내부 코드인 requestAnimationFrame 함수로 인해 초당 60번의 랜더링이 이루어짐
 
@@ -195,39 +236,55 @@ function EditPage() {
     const h = Math.floor(seconds / 3600);
     const m = Math.floor((seconds % 3600) / 60);
     const s = Math.floor(seconds % 60);
-    const f = Math.floor((seconds % 1) * 60); // 60프레임
+    const f = Math.floor((seconds % 1) * fps); // 선택한 fps 기준 프레임
     return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}:${f.toString().padStart(2, '0')}`;
   };
 
   // 멀티뷰 소스에서 비디오 선택 시 프로그램 모니터의 비디오로 설정 및 초기화 함수
   const handleSourceCamClick = (camId) => {
     if (selectedSourceCam === camId) return;
-    setSelectedSourceCam(camId);
-    setInPoint(null);
-    setOutPoint(null);
-    // 재생 상태 유지 — 현재 시간에 맞게 모든 video 싱크
+
+    // state(currentTime)는 rAF 루프에 의해 최대 16ms 지연될 수 있어
+    // 현재 마스터 비디오에서 실제 시간을 직접 읽어 정확한 masterTime 계산
+    const masterVideo = videoRefs.current[selectedSourceCam];
+    const oldCam = cameras.find(c => c.id === selectedSourceCam);
+    let actualMasterTime = currentTime;
+    if (masterVideo && oldCam) {
+      const oldOffset = (Number(oldCam.start_time) - Number(minAbsStart)) / 1000;
+      actualMasterTime = masterVideo.currentTime + oldOffset;
+    }
+
     const newCam = cameras.find(c => c.id === camId);
     if (newCam) {
-      const offset = (Number(newCam.start_time) - Number(minAbsStart)) / 1000;
-      const target = Math.max(0, currentTime - offset);
+      const newOffset = (Number(newCam.start_time) - Number(minAbsStart)) / 1000;
+      const target = Math.max(0, actualMasterTime - newOffset);
+
+      // 프로그램 모니터는 src가 바뀌면 브라우저가 currentTime을 0으로 리셋함
+      // → onCanPlay에서 seek할 시간을 ref에 저장해두고 로드 완료 후 적용
+      pendingProgramSeek.current = target;
+
+      // 멀티뷰 비디오 전체 싱크
       multiviewCameras.forEach(cam => {
         if (!cam) return;
         const v = videoRefs.current[cam.id];
         if (!v) return;
         const camOffset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
-        v.currentTime = Math.max(0, currentTime - camOffset);
+        v.currentTime = Math.max(0, actualMasterTime - camOffset);
       });
-      // 새 masterVideo 재생 시작 — 싱크 루프가 paused 체크로 멈추지 않도록
+
+      // 새 마스터 비디오 싱크 (멀티뷰에 포함되어 위에서 처리되지만 명시적으로 보장)
       const newMasterVideo = videoRefs.current[camId];
       if (newMasterVideo) {
         newMasterVideo.currentTime = target;
         if (isPlaying) newMasterVideo.play().catch(() => {});
       }
-      if (programVideoRef.current) {
-        programVideoRef.current.currentTime = target;
-        if (isPlaying) programVideoRef.current.play().catch(() => {});
-      }
+
+      setCurrentTime(actualMasterTime);
     }
+
+    setSelectedSourceCam(camId);
+    setInPoint(null);
+    setOutPoint(null);
   };
 
   // 비디오 리소스에서 멀티뷰 소스로 비디오 선택 시 multiCamers 배열로 비디오를 추가하는 함수
@@ -370,9 +427,9 @@ function EditPage() {
       return;
     }
     const hasOverlap = savedClips.some(clip => {
-      if (inPoint >= clip.start_seek && inPoint < clip.end_seek) return true;
-      if (outPoint > clip.start_seek && outPoint <= clip.end_seek) return true;
-      if (inPoint <= clip.start_seek && outPoint >= clip.end_seek) return true;
+      if (inPoint >= clip.global_in && inPoint < clip.global_out) return true;
+      if (outPoint > clip.global_in && outPoint <= clip.global_out) return true;
+      if (inPoint <= clip.global_in && outPoint >= clip.global_out) return true;
       return false;
     });
     if (hasOverlap) {
@@ -415,12 +472,27 @@ function EditPage() {
     setSavedClips(savedClips.filter(clip => clip.id !== clipId));
   };
 
+
   const handleVideoLoaded = (camId, e) => {
     const videoDuration = e.target.duration;
     if (videoDuration && !isNaN(videoDuration)) setDuration(videoDuration);
   };
 
   const totalClipDuration = savedClips.reduce((sum, clip) => sum + clip.duration, 0);
+
+  // 이어붙이기 ON 시 각 클립의 표시 위치를 갭 없이 순서대로 계산
+  const compactPositions = React.useMemo(() => {
+    if (!compactTimeline || savedClips.length === 0) return {};
+    let cursor = 0;
+    const positions = {};
+    [...savedClips]
+      .sort((a, b) => a.sequence - b.sequence)
+      .forEach(clip => {
+        positions[clip.id] = { left: cursor, width: clip.duration };
+        cursor += clip.duration;
+      });
+    return positions;
+  }, [compactTimeline, savedClips]);
 
   // 영상 생성 
   const handleSavedClips = async () => {
@@ -677,6 +749,11 @@ function EditPage() {
                       className="program-video"
                       playsInline
                       onCanPlay={() => {
+                        // 카메라 전환으로 새 src가 로드된 경우 저장해둔 시간으로 seek
+                        if (pendingProgramSeek.current !== null && programVideoRef.current) {
+                          programVideoRef.current.currentTime = pendingProgramSeek.current;
+                          pendingProgramSeek.current = null;
+                        }
                         if (isPlaying && programVideoRef.current) {
                           programVideoRef.current.play().catch(() => {});
                         }
@@ -708,7 +785,7 @@ function EditPage() {
                 <button
                   className="btn-icon"
                   onClick={() => {
-                    const newTime = Math.max(0, currentTime - 1);
+                    const newTime = Math.max(0, currentTime - skipFrames / fps);
                     setCurrentTime(newTime);
                     Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; });
                     if (programVideoRef.current) programVideoRef.current.currentTime = newTime;
@@ -729,7 +806,7 @@ function EditPage() {
                 <button
                   className="btn-icon"
                   onClick={() => {
-                    const newTime = Math.min(duration, currentTime + 1);
+                    const newTime = Math.min(totalSessionDuration, currentTime + skipFrames / fps);
                     setCurrentTime(newTime);
                     Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; });
                     if (programVideoRef.current) programVideoRef.current.currentTime = newTime;
@@ -765,6 +842,123 @@ function EditPage() {
                   <Plus size={16} />
                   클립 추가
                 </button>
+
+                {/* 설정 드롭다운 */}
+                <div ref={settingsPanelRef} style={{ position: 'relative' }}>
+                  <button
+                    className="btn-icon"
+                    onClick={() => setShowSettings(v => !v)}
+                    style={{ background: showSettings ? '#e5e7eb' : undefined }}
+                    title="편집 설정"
+                  >
+                    <Settings size={18} />
+                  </button>
+
+                  {showSettings && (
+                    <div style={{
+                      position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 200,
+                      background: '#fff', border: '1px solid #d1d5db', borderRadius: '10px',
+                      boxShadow: '0 8px 24px rgba(0,0,0,0.13)', padding: '16px 18px', minWidth: '220px',
+                    }}>
+                      {/* 재생 속도 */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>재생 속도</div>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {[0.25, 0.5, 1, 1.5, 2].map(r => (
+                            <button
+                              key={r}
+                              onClick={() => setPlaybackRate(r)}
+                              style={{
+                                flex: 1, padding: '4px 0', fontSize: '12px', borderRadius: '6px', cursor: 'pointer',
+                                border: '1px solid #d1d5db',
+                                background: playbackRate === r ? '#3b82f6' : '#f9fafb',
+                                color: playbackRate === r ? '#fff' : '#374151',
+                                fontWeight: playbackRate === r ? '700' : '400',
+                              }}
+                            >
+                              {r}x
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* FPS 설정 */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>FPS 설정</div>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {[24, 30, 60].map(f => (
+                            <button
+                              key={f}
+                              onClick={() => setFps(f)}
+                              style={{
+                                flex: 1, padding: '4px 0', fontSize: '12px', borderRadius: '6px', cursor: 'pointer',
+                                border: '1px solid #d1d5db',
+                                background: fps === f ? '#6366f1' : '#f9fafb',
+                                color: fps === f ? '#fff' : '#374151',
+                                fontWeight: fps === f ? '700' : '400',
+                              }}
+                            >
+                              {f}fps
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 프레임 이동 단위 */}
+                      <div style={{ marginBottom: '14px' }}>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>
+                          이동 단위 <span style={{ fontWeight: '400', color: '#9ca3af' }}>
+                            ({skipFrames}프레임 = {(skipFrames / fps).toFixed(3)}초)
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {[1, 5, 10, 30].map(n => (
+                            <button
+                              key={n}
+                              onClick={() => setSkipFrames(n)}
+                              style={{
+                                flex: 1, padding: '4px 0', fontSize: '12px', borderRadius: '6px', cursor: 'pointer',
+                                border: '1px solid #d1d5db',
+                                background: skipFrames === n ? '#10b981' : '#f9fafb',
+                                color: skipFrames === n ? '#fff' : '#374151',
+                                fontWeight: skipFrames === n ? '700' : '400',
+                              }}
+                            >
+                              {n}f
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* 클립 이어붙이기 토글 */}
+                      <div>
+                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>클립 편집</div>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                          <span style={{ fontSize: '13px', color: '#374151' }}>이어붙이기</span>
+                          <button
+                            onClick={() => setCompactTimeline(v => !v)}
+                            style={{
+                              width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: 'pointer',
+                              background: compactTimeline ? '#10b981' : '#d1d5db',
+                              position: 'relative', transition: 'background 0.2s', flexShrink: 0,
+                            }}
+                          >
+                            <div style={{
+                              position: 'absolute', top: '2px',
+                              left: compactTimeline ? '22px' : '2px',
+                              width: '20px', height: '20px', borderRadius: '50%',
+                              background: '#fff', transition: 'left 0.2s',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                            }} />
+                          </button>
+                        </div>
+                        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
+                          {compactTimeline ? 'ON: 클립을 갭 없이 이어붙여 표시 중' : 'OFF: 원본 위치로 표시 중'}
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -790,7 +984,7 @@ function EditPage() {
                         opacity: 0.6
                       }}
                     >
-                      {cameras[clip.cam].name}
+                      {cameras.find(c => c.id === clip.cam)?.name}
                     </div>
                   ))}
 
@@ -850,11 +1044,14 @@ function EditPage() {
                   /* EditPage.js 내 타임라인 렌더링 부분 수정 */
                   <div className="clips-track">
                     {savedClips.map((clip) => {
-                      // 1. 전체 세션 길이 대비 클립의 시작 위치 비율
-                      const leftPos = (clip.global_in / totalSessionDuration) * 100;
-
-                      // 2. 전체 세션 길이 대비 클립의 길이(너비) 비율
-                      const widthSize = ((clip.global_out - clip.global_in) / totalSessionDuration) * 100;
+                      // 이어붙이기 ON: 갭 없이 순서대로 / OFF: 원본 global_in/out 위치
+                      const cp = compactTimeline ? compactPositions[clip.id] : null;
+                      const leftPos = cp
+                        ? (cp.left / totalSessionDuration) * 100
+                        : (clip.global_in / totalSessionDuration) * 100;
+                      const widthSize = cp
+                        ? (cp.width / totalSessionDuration) * 100
+                        : ((clip.global_out - clip.global_in) / totalSessionDuration) * 100;
 
                       return (
                         <div
