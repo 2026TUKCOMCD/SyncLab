@@ -9,8 +9,6 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: ${DB_PASSWORD}
       MYSQL_DATABASE: ${DB_NAME}
-      MYSQL_USER: ${DB_USER}
-      MYSQL_PASSWORD: ${DB_PASSWORD}
     volumes:
       # DB 데이터 영구 보관 (컨테이너 삭제해도 데이터 유지)
       - mysql_data:/var/lib/mysql
