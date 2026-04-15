@@ -1,8 +1,14 @@
-import { Play, Pause, SkipBack, SkipForward, Save, Plus, Settings } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import '../App.css';
 import axios from 'axios'
 import React, { useState, useRef, useEffect } from 'react';
+import EditHeader from '../components/edit/EditHeader';
+import CameraResourceList from '../components/edit/CameraResourceList';
+import MultiviewGrid from '../components/edit/MultiviewGrid';
+import ProgramMonitor from '../components/edit/ProgramMonitor';
+import ControlBar from '../components/edit/ControlBar';
+import SourceTimeline from '../components/edit/SourceTimeline';
+import EditTimeline from '../components/edit/EditTimeline';
 
 // API 베이스 URL: REACT_APP_API_URL 환경변수 → 없으면 빈 문자열(상대경로, Docker nginx 프록시 사용)
 const API_BASE = process.env.REACT_APP_API_URL || '';
@@ -537,561 +543,101 @@ function EditPage() {
   /* 화면 구성 부분 */
   return (
     <div className="edit-page-container">
-      {/* 헤더 부분 */}
-      <div className="header-container">
-        <div className="header-left">
-          <img src="/synclab_logo.png" alt="synclab_logo" className="logo-img" onClick={() => navigate('/')} />
-        </div>
-        <div className="header-right">
-          <div className="header-info-text">
-            총 클립: {savedClips.length}개 | 총 길이: {formatTime(totalClipDuration)}
-          </div>
-          <button className="btn-base btn-primary" onClick={handleSavedClips}>
-            <Save size={18} />
-            프로젝트 저장
-          </button>
-        </div>
-      </div>
+      <EditHeader
+        savedClips={savedClips}
+        totalClipDuration={totalClipDuration}
+        formatTime={formatTime}
+        onSave={handleSavedClips}
+        onLogoClick={() => navigate('/')}
+      />
 
-      {/* 메인 작업 화면 */}
       <div className="main-content">
-        {/* 좌측 사이드 바 */}
-        <div className="sidebar">
-          {/* 세션 선택 영역 추가 */}
-          <div className="session-select-wrapper">
-            <h2 className="section-title">📅 세션 관리</h2>
-            <div className="session-info-box">
-              <span className="session-label">현재 선택된 세션 ID</span>
-              <div className="session-value">{activeSessionId || "세션을 선택하세요"}</div>
-            </div>
+        <CameraResourceList
+          sessionList={sessionList}
+          activeSessionId={activeSessionId}
+          onSessionChange={setActiveSessionId}
+          cameras={cameras}
+          multiviewCameras={multiviewCameras}
+          onCameraClick={addCameraToMultiview}
+          getProxyUrl={getProxyUrl}
+        />
 
-            <select
-              value={activeSessionId || ""}
-              onChange={(e) => setActiveSessionId(e.target.value)}
-              className="session-select-dropdown"
-            >
-              <option value="" disabled>목록에서 세션 변경</option>
-              {sessionList?.map((session) => (
-                <option key={session.session_session_id} value={session.session_session_id}>
-                  ID: {session.session_session_id}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          <h2 className="section-title">
-            📁 리소스 보관함
-            {/* (선택사항) 개수 표시 */}
-            <span style={{ fontSize: '0.8em', marginLeft: '8px', color: '#666' }}>
-              ({cameras.length})
-            </span>
-          </h2>
-
-          <div className="resource-list">
-            {/* 1. 카메라 목록이 비어있을 경우 처리 */}
-            {cameras.length === 0 ? (
-              <div style={{ padding: '20px', textAlign: 'center', color: '#999' }}>
-                저장된 영상이 없습니다.
-              </div>
-            ) : (
-              /* 2. 카메라 목록 매핑 */
-              cameras.map((cam) => {
-                // 현재 이 카메라가 멀티뷰에 선택되었는지 확인
-                const isSelected = multiviewCameras.some((c) => c?.id === cam.id);
-
-                return (
-                  <div
-                    key={cam.id}
-                    className="resource-item"
-                    style={{
-                      // 선택된 경우 투명도와 테두리 스타일 적용
-                      opacity: isSelected ? 0.5 : 1,
-                      border: isSelected ? '2px solid #10b981' : '1px solid #eee',
-                      cursor: 'pointer',
-                      marginBottom: '10px',
-                      borderRadius: '8px',
-                      overflow: 'hidden',
-                      backgroundColor: '#fff'
-                    }}
-                    onClick={() => addCameraToMultiview(cam)}
-                  >
-                    {/* 비디오 썸네일 영역 */}
-                    <div className="video-thumb-wrapper" style={{ position: 'relative', width: '100%', height: '100px', backgroundColor: '#000' }}>
-                      {cam.videoUrl ? (
-                        <video
-                          src={`${getProxyUrl(cam.videoUrl)}#t=0.1`} // 0.1초 지점 썸네일 사용
-                          className="video-thumb"
-                          preload="metadata"
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          // 마우스 올리면 재생, 떼면 멈춤 (선택사항 효과)
-                          onMouseOver={e => e.target.play()}
-                          onMouseOut={e => e.target.pause()}
-                          muted
-                        />
-                      ) : (
-                        <div className="video-placeholder" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#fff' }}>
-                          🎥
-                        </div>
-                      )}
-
-                      {/* 선택됨 체크 표시 */}
-                      {isSelected && (
-                        <div className="check-badge" style={{
-                          position: 'absolute', top: '5px', right: '5px',
-                          backgroundColor: '#10b981', color: 'white',
-                          borderRadius: '50%', width: '20px', height: '20px',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          fontSize: '12px'
-                        }}>
-                          ✓
-                        </div>
-                      )}
-                    </div>
-
-                    {/* [추가됨] 비디오 정보 텍스트 (이름, 파일명) */}
-                    <div style={{ padding: '8px' }}>
-                      <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '2px' }}>
-                        {cam.name} {/* 예: CAM 1 */}
-                      </div>
-                      <div style={{ fontSize: '11px', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {cam.file_name} {/* 예: cam_01_session2.mp4 */}
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-        {/* 멀티뷰 & 프로그램 모니터 */}
         <div className="workspace-area">
           <div className="monitor-section">
-            <div className="multiview-wrapper">
-              <h2 className="section-title" style={{ fontSize: '20px', marginBottom: '8px' }}>멀티뷰 소스</h2>
-              <div className="multiview-grid">
-                {multiviewCameras.map((cam, slotIndex) => (
-                  <div
-                    key={slotIndex}
-                    className="grid-slot"
-                    onClick={() => handleMultiviewSlotClick(slotIndex)}
-                    style={{
-                      position: 'relative',
-                      cursor: cam ? 'pointer' : 'default',
-                      border: cam && selectedSourceCam === cam.id ? `4px solid ${cam.color}` : '2px solid #4b5563',
-                      boxShadow: cam && selectedSourceCam === cam.id ? `0 0 16px 2px ${cam.color}60` : 'none',
-                      backgroundColor: '#000',
-                      overflow: 'hidden',
-                      minHeight: '150px' // 하얀 화면 방지를 위한 최소 높이
-                    }}
-                  >
-                    {cam ? (
-                      <>
-                        {/* video는 항상 DOM에 유지 — 조건부 렌더링 시 unmount로 인해 재생 위치가 초기화되는 버그 방지 */}
-                        <video
-                          ref={el => { if (el) videoRefs.current[cam.id] = el; }}
-                          src={getProxyUrl(cam.videoUrl)}
-                          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-                          muted
-                          playsInline
-                          onLoadedMetadata={(e) => handleVideoLoaded(cam.id, e)}
-                        />
-                        {currentTime < (Number(cam.start_time) - Number(minAbsStart)) / 1000 && (
-                          <div className="waiting-signal" style={{
-                            position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
-                            alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,1)',
-                            color: 'white', zIndex: 10
-                          }}>
-                            <div className="spinner"></div>
-                            <span style={{ fontWeight: 'bold' }}>신호 대기 중...</span>
-                            <span style={{ fontSize: '11px', marginTop: '4px', opacity: 0.8 }}>
-                              {Math.max(0, Math.ceil((cam.start_time - Number(minAbsStart || 0)) / 1000 - currentTime))}초 후 시작
-                            </span>
-                          </div>
-                        )}
-
-                        <div className="cam-label" style={{ backgroundColor: cam.color || '#333' }}>
-                          {cam.name}
-                        </div>
-                        <button
-                          className="btn-remove-cam"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            removeCameraFromMultiview(slotIndex);
-                          }}
-                        >
-                          ×
-                        </button>
-                      </>
-                    ) : (
-                      <div className="empty-slot">
-                        <div style={{ fontSize: '40px' }}>➕</div>
-                        <div style={{ fontSize: '14px' }}>왼쪽에서 카메라 선택</div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* 선택한 메인 비디오 화면 (프로그램 모니터) */}
-            <div className="program-wrapper">
-              <h2 className="section-title" style={{ fontSize: '20px', marginBottom: '8px' }}>프로그램 모니터</h2>
-              <div className="program-screen">
-                {selectedSourceCam === null ? (
-                  <div className="empty-slot" style={{ color: '#6b7280' }}>
-                    <div style={{ fontSize: '18px' }}>왼쪽에서 카메라를 선택하세요</div>
-                  </div>
-                ) : (
-                  <>
-                    <video
-                      ref={programVideoRef}
-                      src={getProxyUrl(cameras.find(c => c.id === selectedSourceCam)?.videoUrl)}
-                      className="program-video"
-                      playsInline
-                      onCanPlay={() => {
-                        // 카메라 전환으로 새 src가 로드된 경우 저장해둔 시간으로 seek
-                        if (pendingProgramSeek.current !== null && programVideoRef.current) {
-                          programVideoRef.current.currentTime = pendingProgramSeek.current;
-                          pendingProgramSeek.current = null;
-                        }
-                        if (isPlaying && programVideoRef.current) {
-                          programVideoRef.current.play().catch(() => {});
-                        }
-                      }}
-                    />
-                    <div className="cam-label" style={{ backgroundColor: cameras.find(c => c.id === selectedSourceCam)?.color, top: '16px', left: '16px', fontSize: '14px' }}>
-                      {cameras.find(c => c.id === selectedSourceCam)?.name}
-                    </div>
-                    <div className="timecode-overlay">
-                      {formatTime(currentTime)}
-                    </div>
-                    {(inPoint !== null || outPoint !== null) && (
-                      <div className="info-overlay">
-                        {inPoint !== null && <div style={{ color: '#34d399' }}>IN: {formatTime(inPoint)}</div>}
-                        {outPoint !== null && <div style={{ color: '#f87171' }}>OUT: {formatTime(outPoint)}</div>}
-                        {inPoint !== null && outPoint !== null && <div style={{ color: '#fbbf24' }}>길이: {formatTime(outPoint - inPoint)}</div>}
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
+            <MultiviewGrid
+              multiviewCameras={multiviewCameras}
+              selectedSourceCam={selectedSourceCam}
+              currentTime={currentTime}
+              minAbsStart={minAbsStart}
+              videoRefs={videoRefs}
+              onSlotClick={handleMultiviewSlotClick}
+              onRemoveCamera={removeCameraFromMultiview}
+              onVideoLoaded={handleVideoLoaded}
+              getProxyUrl={getProxyUrl}
+            />
+            <ProgramMonitor
+              selectedSourceCam={selectedSourceCam}
+              cameras={cameras}
+              programVideoRef={programVideoRef}
+              pendingProgramSeek={pendingProgramSeek}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              inPoint={inPoint}
+              outPoint={outPoint}
+              formatTime={formatTime}
+              getProxyUrl={getProxyUrl}
+            />
           </div>
 
           <div className="timeline-container">
-            <div className="timeline-header">
-              <h2 className="section-title" style={{ margin: 0 }}>타임라인</h2>
-              <div className="timeline-controls">
-                <button
-                  className="btn-icon"
-                  onClick={() => {
-                    const newTime = Math.max(0, currentTime - skipFrames / fps);
-                    setCurrentTime(newTime);
-                    Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; });
-                    if (programVideoRef.current) programVideoRef.current.currentTime = newTime;
-                  }}
-                  disabled={selectedSourceCam === null}
-                  style={{ opacity: selectedSourceCam === null ? 1 : 1 }}
-                >
-                  <SkipBack size={20} />
-                </button>
-                <button
-                  className="btn-icon"
-                  onClick={togglePlay}
-                  disabled={selectedSourceCam === null}
-                  style={{ opacity: selectedSourceCam === null ? 1 : 1 }}
-                >
-                  {isPlaying ? <Pause size={20} /> : <Play size={20} />}
-                </button>
-                <button
-                  className="btn-icon"
-                  onClick={() => {
-                    const newTime = Math.min(totalSessionDuration, currentTime + skipFrames / fps);
-                    setCurrentTime(newTime);
-                    Object.values(videoRefs.current).forEach(v => { if (v) v.currentTime = newTime; });
-                    if (programVideoRef.current) programVideoRef.current.currentTime = newTime;
-                  }}
-                  disabled={selectedSourceCam === null}
-                  style={{ opacity: selectedSourceCam === null ? 1 : 1 }}
-                >
-                  <SkipForward size={20} />
-                </button>
-                <div className="divider" />
-                <button
-                  className="btn-base btn-in"
-                  onClick={setIn}
-                  disabled={selectedSourceCam === null}
-                  style={{ opacity: selectedSourceCam === null ? 0.9 : 1 }}
-                >
-                  In 설정
-                </button>
-                <button
-                  className="btn-base btn-out"
-                  onClick={setOut}
-                  disabled={selectedSourceCam === null}
-                  style={{ opacity: selectedSourceCam === null ? 0.9 : 1 }}
-                >
-                  Out 설정
-                </button>
-                <button
-                  className="btn-base btn-add"
-                  onClick={addClip}
-                  disabled={selectedSourceCam === null || inPoint === null || outPoint === null}
-                  style={{ opacity: (selectedSourceCam === null || inPoint === null || outPoint === null) ? 0.9 : 1 }}
-                >
-                  <Plus size={16} />
-                  클립 추가
-                </button>
-
-                {/* 설정 드롭다운 */}
-                <div ref={settingsPanelRef} style={{ position: 'relative' }}>
-                  <button
-                    className="btn-icon"
-                    onClick={() => setShowSettings(v => !v)}
-                    style={{ background: showSettings ? '#e5e7eb' : undefined }}
-                    title="편집 설정"
-                  >
-                    <Settings size={18} />
-                  </button>
-
-                  {showSettings && (
-                    <div style={{
-                      position: 'absolute', right: 0, top: 'calc(100% + 6px)', zIndex: 200,
-                      background: '#fff', border: '1px solid #d1d5db', borderRadius: '10px',
-                      boxShadow: '0 8px 24px rgba(0,0,0,0.13)', padding: '16px 18px', minWidth: '220px',
-                    }}>
-                      {/* 재생 속도 */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>재생 속도</div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {[0.25, 0.5, 1, 1.5, 2].map(r => (
-                            <button
-                              key={r}
-                              onClick={() => setPlaybackRate(r)}
-                              style={{
-                                flex: 1, padding: '4px 0', fontSize: '12px', borderRadius: '6px', cursor: 'pointer',
-                                border: '1px solid #d1d5db',
-                                background: playbackRate === r ? '#3b82f6' : '#f9fafb',
-                                color: playbackRate === r ? '#fff' : '#374151',
-                                fontWeight: playbackRate === r ? '700' : '400',
-                              }}
-                            >
-                              {r}x
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* FPS 설정 */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>FPS 설정</div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {[24, 30, 60].map(f => (
-                            <button
-                              key={f}
-                              onClick={() => setFps(f)}
-                              style={{
-                                flex: 1, padding: '4px 0', fontSize: '12px', borderRadius: '6px', cursor: 'pointer',
-                                border: '1px solid #d1d5db',
-                                background: fps === f ? '#6366f1' : '#f9fafb',
-                                color: fps === f ? '#fff' : '#374151',
-                                fontWeight: fps === f ? '700' : '400',
-                              }}
-                            >
-                              {f}fps
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 프레임 이동 단위 */}
-                      <div style={{ marginBottom: '14px' }}>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>
-                          이동 단위 <span style={{ fontWeight: '400', color: '#9ca3af' }}>
-                            ({skipFrames}프레임 = {(skipFrames / fps).toFixed(3)}초)
-                          </span>
-                        </div>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {[1, 5, 10, 30].map(n => (
-                            <button
-                              key={n}
-                              onClick={() => setSkipFrames(n)}
-                              style={{
-                                flex: 1, padding: '4px 0', fontSize: '12px', borderRadius: '6px', cursor: 'pointer',
-                                border: '1px solid #d1d5db',
-                                background: skipFrames === n ? '#10b981' : '#f9fafb',
-                                color: skipFrames === n ? '#fff' : '#374151',
-                                fontWeight: skipFrames === n ? '700' : '400',
-                              }}
-                            >
-                              {n}f
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-
-                      {/* 클립 이어붙이기 토글 */}
-                      <div>
-                        <div style={{ fontSize: '12px', fontWeight: '600', color: '#6b7280', marginBottom: '6px' }}>클립 편집</div>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span style={{ fontSize: '13px', color: '#374151' }}>이어붙이기</span>
-                          <button
-                            onClick={() => setCompactTimeline(v => !v)}
-                            style={{
-                              width: '44px', height: '24px', borderRadius: '12px', border: 'none', cursor: 'pointer',
-                              background: compactTimeline ? '#10b981' : '#d1d5db',
-                              position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-                            }}
-                          >
-                            <div style={{
-                              position: 'absolute', top: '2px',
-                              left: compactTimeline ? '22px' : '2px',
-                              width: '20px', height: '20px', borderRadius: '50%',
-                              background: '#fff', transition: 'left 0.2s',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
-                            }} />
-                          </button>
-                        </div>
-                        <div style={{ fontSize: '11px', color: '#9ca3af', marginTop: '4px' }}>
-                          {compactTimeline ? 'ON: 클립을 갭 없이 이어붙여 표시 중' : 'OFF: 원본 위치로 표시 중'}
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {selectedSourceCam !== null && (
-              <div className="source-timeline-wrapper">
-                <div style={{ fontSize: '12px', color: '#9ca3af', marginBottom: '4px' }}>소스 타임라인 - {cameras.find(c => c.id === selectedSourceCam)?.name}</div>
-                <div className="time-ruler">
-                  {[...Array(13)].map((_, i) => (
-                    <span key={i}>{formatTime((duration / 12) * i).slice(0, 8)}</span>
-                  ))}
-                </div>
-                <div className="timeline-track" ref={timelineRef} onClick={handleTimelineClick}>
-                  <div className="track-bg" style={{ backgroundColor: '#ffffff', border: '2px solid rgb(0,0,0)' }} />
-
-                  {savedClips.map((clip) => (
-                    <div
-                      key={clip.id}
-                      className="clip-region"
-                      style={{
-                        left: `${(clip.global_in / totalSessionDuration) * 100}%`,
-                        width: `${((clip.global_out - clip.global_in) / totalSessionDuration) * 100}%`,
-                        backgroundColor: cameras.find(c => c.id === clip.cam)?.color,
-                        opacity: 0.6
-                      }}
-                    >
-                      {cameras.find(c => c.id === clip.cam)?.name}
-                    </div>
-                  ))}
-
-                  {inPoint !== null && outPoint !== null && (
-                    <div
-                      className="selection-region"
-                      style={{
-                        left: `${(inPoint / totalSessionDuration) * 100}%`,
-                        width: `${((outPoint - inPoint) / totalSessionDuration) * 100}%`,
-                      }}
-                    />
-                  )}
-
-                  {inPoint !== null && (
-                    <div
-                      className="marker"
-                      onMouseDown={(e) => handleMarkerMouseDown('in', e)}
-                      style={{
-                        left: `${(inPoint / totalSessionDuration) * 100}%`,
-                        backgroundColor: '#10b981',
-                      }}
-                    >
-                      <div className="marker-label" style={{ backgroundColor: '#10b981' }}>IN</div>
-                    </div>
-                  )}
-
-                  {outPoint !== null && (
-                    <div
-                      className="marker"
-                      onMouseDown={(e) => handleMarkerMouseDown('out', e)}
-                      style={{
-                        left: `${(outPoint / totalSessionDuration) * 100}%`,
-                        backgroundColor: '#ef4444',
-                      }}
-                    >
-                      <div className="marker-label" style={{ backgroundColor: '#ef4444' }}>OUT</div>
-                    </div>
-                  )}
-
-                  <div className="playhead" style={{ left: `${(currentTime / totalSessionDuration) * 100}%` }}>
-                    <div className="playhead-head" />
-                  </div>
-                </div>
-              </div>
-            )}
-
-            <div style={{ flex: 1 }}>
-              <div className="edit-timeline-label">편집 타임라인 (저장된 클립)</div>
-              <div className="clips-container">
-                {savedClips.length === 0 ? (
-                  <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'black', fontSize: '16px' }}>
-                    저장된 클립이 없습니다. 소스에서 구간을 선택하고 "클립 추가"를 눌러주세요.
-                  </div>
-                ) : (
-                  /* EditPage.js 내 타임라인 렌더링 부분 */
-
-                  /* EditPage.js 내 타임라인 렌더링 부분 수정 */
-                  <div className="clips-track">
-                    {savedClips.map((clip) => {
-                      // 이어붙이기 ON: 갭 없이 순서대로 / OFF: 원본 global_in/out 위치
-                      const cp = compactTimeline ? compactPositions[clip.id] : null;
-                      const leftPos = cp
-                        ? (cp.left / totalSessionDuration) * 100
-                        : (clip.global_in / totalSessionDuration) * 100;
-                      const widthSize = cp
-                        ? (cp.width / totalSessionDuration) * 100
-                        : ((clip.global_out - clip.global_in) / totalSessionDuration) * 100;
-
-                      return (
-                        <div
-                          key={clip.id}
-                          className="clip-wrapper"
-                          style={{
-                            position: 'absolute', // 절대 위치 지정
-                            left: `${leftPos}%`,
-                            width: `${widthSize}%`,
-                            height: '100%',
-                          }}
-                        >
-                          <div
-                            className="clip-item-content"
-                            style={{
-                              backgroundColor: cameras.find(c => c.id === clip.cam)?.color, // ID 기반으로 색상 찾기
-                              border: `2px solid ${cameras.find(c => c.id === clip.cam)?.color}`,
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              height: '100%',
-                              borderRadius: '4px',
-                              position: 'relative'
-                            }}
-                          >
-                            {/* 클립 텍스트 및 삭제 버튼 */}
-                            <div className="clip-info">
-                              <div className="clip-info-text-main" style={{ fontSize: '12px', fontWeight: 'bold' }}>
-                                {cameras.find(c => c.id === clip.cam)?.name}
-                              </div>
-                            </div>
-                            <button className="btn-clip-delete" onClick={() => removeClip(clip.id)}>×</button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            </div>
+            <ControlBar
+              selectedSourceCam={selectedSourceCam}
+              isPlaying={isPlaying}
+              currentTime={currentTime}
+              totalSessionDuration={totalSessionDuration}
+              skipFrames={skipFrames}
+              fps={fps}
+              playbackRate={playbackRate}
+              compactTimeline={compactTimeline}
+              videoRefs={videoRefs}
+              programVideoRef={programVideoRef}
+              settingsPanelRef={settingsPanelRef}
+              showSettings={showSettings}
+              inPoint={inPoint}
+              outPoint={outPoint}
+              onSetCurrentTime={setCurrentTime}
+              onTogglePlay={togglePlay}
+              onSetIn={setIn}
+              onSetOut={setOut}
+              onAddClip={addClip}
+              onSetShowSettings={setShowSettings}
+              onSetPlaybackRate={setPlaybackRate}
+              onSetFps={setFps}
+              onSetSkipFrames={setSkipFrames}
+              onToggleCompact={() => setCompactTimeline(v => !v)}
+            />
+            <SourceTimeline
+              selectedSourceCam={selectedSourceCam}
+              cameras={cameras}
+              duration={duration}
+              savedClips={savedClips}
+              totalSessionDuration={totalSessionDuration}
+              inPoint={inPoint}
+              outPoint={outPoint}
+              currentTime={currentTime}
+              timelineRef={timelineRef}
+              onTimelineClick={handleTimelineClick}
+              onMarkerMouseDown={handleMarkerMouseDown}
+              formatTime={formatTime}
+            />
+            <EditTimeline
+              savedClips={savedClips}
+              cameras={cameras}
+              compactTimeline={compactTimeline}
+              compactPositions={compactPositions}
+              totalSessionDuration={totalSessionDuration}
+              onRemoveClip={removeClip}
+            />
           </div>
         </div>
       </div>

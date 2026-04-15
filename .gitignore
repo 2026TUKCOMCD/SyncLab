@@ -15,6 +15,9 @@ coverage/
 .DS_Store
 Thumbs.db
 
+# ngrok 설정 (authtoken 포함 - 커밋 금지)
+ngrok.yml
+
 .vscode/
 .idea/
 
