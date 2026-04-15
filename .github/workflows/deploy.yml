@@ -22,7 +22,7 @@ jobs:
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            cd ~/SyncLab
+            cd ~/Synclab
 
             # PAT를 사용하여 최신 코드 pull
             git remote set-url origin https://${{ secrets.GH_PAT }}@github.com/2026TUKCOMCD/Synclab.git
