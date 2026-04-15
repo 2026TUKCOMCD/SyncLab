@@ -2,12 +2,14 @@
 ### 📖 프로젝트 개요
 본 프로젝트는 여러 각도에서 촬영한 스포츠 경기를 웹을 통해 하나의 영상으로 편집하는 시스템입니다. <br>
 이를 통해 사용자가 원하는 각도 또는 가장 적합한 각도에서 경기를 보여주거나 하이라이트를 생성하여 몰입감을 더해줄 수 있습니다.
+### 웹 사이트 방문하기
+www.synclab.click
 ## 📁 시스템 구성도
 <img width="1399" height="803" alt="system architecture" src="https://github.com/user-attachments/assets/194f9430-72ae-4759-a62e-b3239b39ad2f" />
 <details>
 <summary>🛠️ 개발 환경</summary>
 <div>
-  
+ 
 #### 개발 언어
 <table>
   <tr>
