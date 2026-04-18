@@ -19,7 +19,7 @@ function LoginPage() {
         document.body.appendChild(googleScript);
 
         const kakaoScript = document.createElement('script');
-        kakaoScript.src = 'https://t1.kakaocdn.net/kakao_js_sdk/2.7.2/kakao.min.js';
+        kakaoScript.src = 'https://developers.kakao.com/sdk/js/kakao.js';
         kakaoScript.async = true;
         kakaoScript.onload = () => {
             if (window.Kakao && !window.Kakao.isInitialized()) {
@@ -50,6 +50,7 @@ function LoginPage() {
     // Kakao 로그인 핸들러
     const handleKakaoLogin = () => {
         window.Kakao.Auth.login({
+            redirectUri: 'http://www.synclab.click/kakao-callback.html',
             success: async (authObj) => {
                 try {
                     const response = await axios.post('/api/web/kakao', {
