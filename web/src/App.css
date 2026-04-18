@@ -948,3 +948,64 @@ body {
 .btn-clip-delete:hover {
   background: rgba(220, 38, 38, 0.8); /* 삭제 시 빨간색 강조 */
 }
+
+/* 소셜 로그인 */
+.social-divider {
+  display: flex;
+  align-items: center;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 0.85rem;
+  margin: 1.2rem 0;
+}
+
+.social-divider::before,
+.social-divider::after {
+  content: '';
+  flex: 1;
+  border-bottom: 1px solid #e5e7eb;
+  margin: 0 0.5rem;
+}
+
+.kakao-btn {
+  width: 100%;
+  padding: 0.8rem;
+  margin-top: 0.8rem;
+  background-color: #FEE500;
+  color: #3C1E1E;
+  border: none;
+  border-radius: 6px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.kakao-btn:hover {
+  background-color: #F0D800;
+}
+
+/* 회원가입 탭 */
+.tab-group {
+  display: flex;
+  margin-bottom: 1.5rem;
+  border-bottom: 2px solid #e5e7eb;
+}
+
+.tab {
+  flex: 1;
+  padding: 0.6rem;
+  background: none;
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #9ca3af;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.tab.active {
+  color: #2563eb;
+  border-bottom: 2px solid #2563eb;
+  margin-bottom: -2px;
+}

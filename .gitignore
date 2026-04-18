@@ -44,3 +44,7 @@ LIVE_STREAMING_PROMPTS.mdnul
 *.mov
 *.avi
 *.mkv
+
+
+claude.md
+.gitignore
