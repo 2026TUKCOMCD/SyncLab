@@ -363,6 +363,11 @@ body {
   cursor: not-allowed;
 }
 
+.btn-secondary {
+  background-color: #374151;
+  color: #d1d5db;
+}
+
 /* --- 메인 콘텐츠 영역 (사이드바 + 워크스페이스) --- */
 .main-content {
   flex: 1;
@@ -1058,4 +1063,153 @@ body {
   color: #2563eb;
   border-bottom: 2px solid #2563eb;
   margin-bottom: -2px;
+}
+
+/* ExportPage */
+.export-page-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  background-color: #111827;
+}
+
+.export-card {
+  background-color: #1f2937;
+  border-radius: 16px;
+  padding: 48px 56px;
+  width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 25px 50px rgba(0, 0, 0, 0.5);
+}
+
+.export-logo {
+  height: 36px;
+  margin-bottom: 24px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+
+.export-status-section {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  gap: 12px;
+}
+
+.export-title {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: #f9fafb;
+  margin: 0;
+}
+
+.export-subtitle {
+  font-size: 0.9rem;
+  color: #9ca3af;
+  margin: 0;
+}
+
+/* 로딩 스피너 */
+.export-spinner {
+  width: 56px;
+  height: 56px;
+  border: 5px solid #374151;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: spin 0.9s linear infinite;
+  margin-bottom: 8px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* 진행률 바 */
+.export-progress-bar-wrapper {
+  width: 100%;
+  height: 8px;
+  background-color: #374151;
+  border-radius: 999px;
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.export-progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #2563eb, #60a5fa);
+  border-radius: 999px;
+  transition: width 0.4s ease;
+}
+
+.export-progress-text {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: #60a5fa;
+}
+
+.export-elapsed {
+  font-size: 0.85rem;
+  color: #6b7280;
+}
+
+/* 완료 아이콘 */
+.export-done-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: #16a34a;
+  color: white;
+  font-size: 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+/* 실패 아이콘 */
+.export-error-icon {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background-color: #dc2626;
+  color: white;
+  font-size: 1.8rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 8px;
+}
+
+.export-error-msg {
+  font-size: 0.82rem;
+  color: #f87171;
+  text-align: left;
+  word-break: break-all;
+  white-space: pre-wrap;
+  background-color: #1a1a2e;
+  border-radius: 8px;
+  padding: 12px;
+  max-height: 200px;
+  overflow-y: auto;
+  width: 100%;
+}
+
+.export-download-btn {
+  width: 100%;
+  text-align: center;
+  margin-top: 8px;
+  text-decoration: none;
+  padding: 12px;
+  font-size: 1rem;
+}
+
+.export-back-btn {
+  width: 100%;
+  text-align: center;
+  font-size: 0.9rem;
 }

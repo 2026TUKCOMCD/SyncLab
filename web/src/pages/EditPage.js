@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import '../App.css';
 import axios from 'axios'
 import React, { useState, useRef, useEffect } from 'react';
@@ -17,13 +17,14 @@ const API_BASE = process.env.REACT_APP_API_URL || '';
 
 function EditPage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isPlaying, setIsPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(180);
   const [selectedSourceCam, setSelectedSourceCam] = useState(null);
   const [inPoint, setInPoint] = useState(null);
   const [outPoint, setOutPoint] = useState(null);
-  const [savedClips, setSavedClips] = useState([]);
+  const [savedClips, setSavedClips] = useState(location.state?.restoredClips || []);
   const [isDraggingIn, setIsDraggingIn] = useState(false);
   const [isDraggingOut, setIsDraggingOut] = useState(false);
   const videoRefs = useRef({});
@@ -44,6 +45,7 @@ function EditPage() {
   const [cameras, setCameras] = useState([]);
   const [sessionList, setSessionList] = useState([]); // 사용자가 참여한 여러 세션 목록을 위한 변수
   const [activeSessionId, setActiveSessionId] = useState(null); // 현재 사용자가 선택한 세션에 대한 변수
+  const skipClipReset = useRef(!!location.state?.restoredClips);
 
   // 모든 카메라 중 시작 시간이 가장 빠른 비디오의 시작 시간과 session의 총 영상 길이 찾기
   const minAbsStart = React.useMemo(() => {
@@ -68,7 +70,9 @@ function EditPage() {
         setSessionList(sessions); // session_id가 저장되어 있는 response를 리스트로 생성
 
         if (sessions.length > 0) {
-          setActiveSessionId(sessions[0]?.session_session_id); // 배열 중 가장 상위에 있는 session_id로 초기값 설정 -> null 이나 가장 최근에 생성한 session으로 변경 가능할 듯
+          const restoredSessionId = location.state?.restoredSessionId;
+          const target = sessions.find(s => s.session_session_id === restoredSessionId) || sessions[0];
+          setActiveSessionId(target?.session_session_id);
         }
       }
       catch (error) {
@@ -104,7 +108,11 @@ function EditPage() {
         }));
 
         setCameras(coloredVideos);
-        setSavedClips([]); // 세션 재선택 시 클립 초기화
+        if (skipClipReset.current) {
+          skipClipReset.current = false;
+        } else {
+          setSavedClips([]); // 세션 재선택 시 클립 초기화
+        }
         setMultiviewCameras([null, null, null, null]); // 세션 재선택 시 멀티뷰 화면 초기화
         setSelectedSourceCam(null);
       }
@@ -637,34 +645,24 @@ function EditPage() {
     return positions;
   }, [compactTimeline, savedClips]);
 
-  // 영상 생성 
-  const handleSavedClips = async () => {
+  // 영상 생성 - ExportPage로 이동하여 렌더링 진행
+  const handleSavedClips = () => {
     if (savedClips.length === 0) {
       alert("저장된 클립이 없습니다. 먼저 클립을 생성해 주세요.");
       return;
     }
     const clipArrays = savedClips.map(clip => ({
+      id: clip.id,
       sequence: clip.sequence,
+      cam: clip.cam,
       video_url: clip.video_url,
       start_seek: clip.start_seek,
       end_seek: clip.end_seek,
-      duration: clip.duration
+      duration: clip.duration,
+      global_in: clip.global_in,
+      global_out: clip.global_out
     }));
-
-    const payload = {
-      session_id: activeSessionId,
-      edit_data: clipArrays
-    }
-    try {
-      const token = localStorage.getItem('accessToken');
-      const response = await axios.post(`${API_BASE}/api/web/save_edit_data`, payload, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      alert("편집 정보가 성공적으로 저장되었습니다!");
-    }
-    catch (error) {
-      console.error("저장 실패 : ", error);
-    }
+    navigate('/export', { state: { clips: clipArrays, sessionId: activeSessionId } });
   };
 
   // 1080p 영상 주소를 480p 주소로 변환

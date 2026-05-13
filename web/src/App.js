@@ -7,6 +7,7 @@ import LoginPage from './pages/LoginPage';
 import MainPage from './pages/MainPage';
 import RegisterPage from './pages/RegisterPage';
 import EditPage from './pages/EditPage';
+import ExportPage from './pages/ExportPage';
 import LivePage from './pages/LivePage';
 import LiveListPage from './pages/LiveListPage';
 
@@ -25,6 +26,9 @@ function App() {
 
         {/* /editor 로 오면 EditorPage(편집화면) 보여줌 */}
         <Route path="/editor" element={<EditPage />} />
+
+        {/* /export 로 오면 ExportPage(내보내기 진행) 보여줌 */}
+        <Route path="/export" element={<ExportPage />} />
 
         {/* /live/:sessionId 로 오면 LivePage(라이브 시청) 보여줌 */}
         <Route path="/live/:sessionId" element={<LivePage />} />

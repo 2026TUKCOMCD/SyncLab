@@ -4,14 +4,21 @@
 
 import jwt
 import os
+import uuid
+import asyncio
+import threading
 from app.services.video_sync_editor import VideoEditServer
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from app.database.connection import get_db
 from app.models.schemas import ClipData, SavedEditRequest
-from fastapi.security import OAuth2PasswordBearer # HTTP 헤더에서 토큰을 추출하고 검증하는 보안 도구
-from app.routers.web_auth import ALGORITHM, SECRET_KEY # 로그인에서 사용했던 토큰과 알고리즘 HS256
+from fastapi.security import OAuth2PasswordBearer
+from app.routers.web_auth import ALGORITHM, SECRET_KEY
 from pathlib import Path
 import json
+
+# 진행 중인 렌더링 작업 상태 저장 (job_id -> 상태 dict)
+jobs: dict = {}
 
 S3_BUCKET_ORIGINAL = os.getenv("S3_BUCKET_ORIGINAL", "synclab-1080p-mp4")
 AWS_REGION = os.getenv("AWS_REGION", "ap-northeast-2")
@@ -128,6 +135,75 @@ def save_edit_data(request: SavedEditRequest, db = Depends(get_db)):
     
     finally:
         cursor.close()
+
+
+
+
+# POST /api/web/export - 렌더링 작업 시작, job_id 즉시 반환
+@router.post("/export")
+def start_export(request: SavedEditRequest, db = Depends(get_db)):
+    edit_list = [clip.dict() for clip in request.edit_data]
+    json_edit_data = json.dumps(edit_list)
+
+    cursor = db.cursor(dictionary=True)
+    try:
+        sql = "INSERT INTO edit (edit_data, session_session_id) VALUES (%s, %s) ON DUPLICATE KEY UPDATE edit_data = %s"
+        cursor.execute(sql, (json_edit_data, request.session_id, json_edit_data))
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        cursor.close()
+
+    job_id = str(uuid.uuid4())
+    jobs[job_id] = {"status": "running", "progress": 0, "video_url": None, "error": None}
+
+    payload = {"session_id": request.session_id, "edit_data": edit_list}
+
+    def run_export():
+        try:
+            def progress_cb(pct):
+                jobs[job_id]["progress"] = pct
+
+            final_path = video_editor.process_request(payload, progress_callback=progress_cb)
+            output_filename = Path(final_path).name
+            jobs[job_id]["video_url"] = f"/videos/{output_filename}"
+            jobs[job_id]["status"] = "done"
+            jobs[job_id]["progress"] = 100
+        except Exception as e:
+            jobs[job_id]["status"] = "error"
+            jobs[job_id]["error"] = str(e)
+
+    thread = threading.Thread(target=run_export, daemon=True)
+    thread.start()
+
+    return {"job_id": job_id}
+
+
+# GET /api/web/export/stream/{job_id} - SSE로 진행률 스트리밍
+@router.get("/export/stream/{job_id}")
+async def stream_export_progress(job_id: str):
+    async def event_generator():
+        while True:
+            if job_id not in jobs:
+                yield f"data: {json.dumps({'status': 'error', 'error': 'job not found'})}\n\n"
+                return
+
+            job = jobs[job_id]
+            yield f"data: {json.dumps(job)}\n\n"
+
+            if job["status"] in ("done", "error"):
+                del jobs[job_id]
+                return
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
         #26.2.13. 추가 - 서버 조회용 api, 즉 ( 불러오기시) 데베에서 꺼내서 편집할수 있게 만든 코드.
