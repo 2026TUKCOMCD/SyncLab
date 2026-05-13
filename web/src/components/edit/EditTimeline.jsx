@@ -1,3 +1,12 @@
+const getTextColor = (hexColor) => {
+  if (!hexColor) return '#ffffff';
+  const r = parseInt(hexColor.slice(1, 3), 16);
+  const g = parseInt(hexColor.slice(3, 5), 16);
+  const b = parseInt(hexColor.slice(5, 7), 16);
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.5 ? '#1a1a1a' : '#ffffff';
+};
+
 function EditTimeline({ savedClips, cameras, compactTimeline, compactPositions, totalSessionDuration, onRemoveClip, onClipReplay }) {
   return (
     <div style={{ flex: 1 }}>
@@ -29,19 +38,19 @@ function EditTimeline({ savedClips, cameras, compactTimeline, compactPositions, 
                     className="clip-item-content"
                     style={{
                       backgroundColor: clipColor,
-                      border: `2px solid ${clipColor}`,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      border: '2px solid rgba(255,255,255,0.3)',
                       height: '100%', borderRadius: '4px', position: 'relative',
-                      cursor: 'pointer'
+                      cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center'
                     }}
-                    onClick={() => onClipReplay && onClipReplay(clip)}
                   >
-                    <div className="clip-info">
-                      <div className="clip-info-text-main" style={{ fontSize: '12px', fontWeight: 'bold' }}>
-                        {cameras.find(c => c.id === clip.cam)?.name}
-                      </div>
+                    <span className="clip-seq-label" style={{ color: getTextColor(clipColor) }}>
+                      {clip.sequence} {cameras.find(c => c.id === clip.cam)?.name}
+                    </span>
+                    <div className="clip-hover-overlay">
+                      <button className="clip-icon-btn clip-icon-play" onClick={() => onClipReplay && onClipReplay(clip)}>▶</button>
+                      <button className="clip-icon-btn clip-icon-del" onClick={(e) => { e.stopPropagation(); onRemoveClip(clip.id); }}>×</button>
                     </div>
-                    <button className="btn-clip-delete" onClick={(e) => { e.stopPropagation(); onRemoveClip(clip.id); }}>×</button>
                   </div>
                 </div>
               );

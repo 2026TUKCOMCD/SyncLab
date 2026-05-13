@@ -827,7 +827,7 @@ body {
 .clips-container {
   position: relative;
   height: 80px;
-  background-color: var(--border-color);
+  background-color: #1e293b;
   border-radius: 8px;
   padding: 8px;
   overflow-x: auto;
@@ -927,26 +927,66 @@ body {
   opacity: 0.9;
 }
 
-.btn-clip-delete {
+.clip-seq-label {
+  font-size: 11px;
+  font-weight: 500;
+  pointer-events: none;
+  transition: opacity 0.15s;
+  z-index: 1;
+  text-align: center;
+  padding: 0 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 90%;
+}
+
+.clip-item-content:hover .clip-seq-label {
+  opacity: 0;
+}
+
+.clip-hover-overlay {
   position: absolute;
-  top: 4px;
-  right: 4px;
-  background: rgba(0,0,0,0.3);
-  border: none;
-  border-radius: 50%;
-  color: white;
-  width: 18px;
-  height: 18px;
-  cursor: pointer;
+  inset: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  transition: background 0.2s;
+  gap: 8px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
 
-.btn-clip-delete:hover {
-  background: rgba(220, 38, 38, 0.8); /* 삭제 시 빨간색 강조 */
+.clip-item-content:hover .clip-hover-overlay {
+  opacity: 1;
+}
+
+.clip-icon-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 13px;
+  transition: transform 0.1s;
+}
+
+.clip-icon-btn:hover {
+  transform: scale(1.15);
+}
+
+.clip-icon-play {
+  background: rgba(255, 255, 255, 0.25);
+  color: #ffffff;
+}
+
+.clip-icon-del {
+  background: rgba(220, 38, 38, 0.75);
+  color: #ffffff;
 }
 
 /* 소셜 로그인 */
