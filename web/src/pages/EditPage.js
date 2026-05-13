@@ -31,6 +31,7 @@ function EditPage() {
   const timelineRef = useRef(null);
   const animationRef = useRef(null);
   const pendingProgramSeek = useRef(null); // 카메라 전환 시 새 프로그램 비디오 seek 대기값
+  const replayEndRef = useRef(null); // 리플레이 종료 시점 저장
   const settingsPanelRef = useRef(null);   // 드롭다운 외부 클릭 감지용
   const [showSettings, setShowSettings] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -159,6 +160,15 @@ function EditPage() {
           const mainOffset = (Number(mainCam.start_time) - Number(minAbsStart)) / 1000;
           const calculateMasterTime = actualVideoTime + mainOffset;
           setCurrentTime(calculateMasterTime);
+
+          // 리플레이 종료 시점 도달 시 자동 정지
+          if (replayEndRef.current !== null && calculateMasterTime >= replayEndRef.current) {
+            Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
+            if (programVideoRef.current) programVideoRef.current.pause();
+            replayEndRef.current = null;
+            setIsPlaying(false);
+            return;
+          }
 
           multiviewCameras.forEach(cam => {
             if (!cam || cam.id === selectedSourceCam) return;
@@ -478,6 +488,47 @@ function EditPage() {
     setSavedClips(savedClips.filter(clip => clip.id !== clipId));
   };
 
+  // 클립 클릭 시 해당 구간 리플레이 함수
+  const handleClipReplay = (clip) => {
+    const isInMultiview = multiviewCameras.some(cam => cam && cam.id === clip.cam);
+    if (!isInMultiview) {
+      alert('해당 클립의 카메라가 멀티뷰에 없습니다.');
+      return;
+    }
+
+    if (isPlaying) {
+      Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
+      if (programVideoRef.current) programVideoRef.current.pause();
+      setIsPlaying(false);
+    }
+
+    setSelectedSourceCam(clip.cam);
+    replayEndRef.current = clip.global_out;
+
+    const masterTime = clip.global_in;
+    setCurrentTime(masterTime);
+
+    multiviewCameras.forEach(cam => {
+      if (!cam) return;
+      const v = videoRefs.current[cam.id];
+      if (!v) return;
+      const offset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
+      v.currentTime = Math.max(0, masterTime - offset);
+    });
+
+    const clipCam = cameras.find(c => c.id === clip.cam);
+    if (clipCam && programVideoRef.current) {
+      const offset = (Number(clipCam.start_time) - Number(minAbsStart)) / 1000;
+      pendingProgramSeek.current = Math.max(0, masterTime - offset);
+      programVideoRef.current.currentTime = Math.max(0, masterTime - offset);
+    }
+
+    const masterVideo = videoRefs.current[clip.cam];
+    if (masterVideo) masterVideo.play().catch(() => {});
+    if (programVideoRef.current) programVideoRef.current.play().catch(() => {});
+    setIsPlaying(true);
+  };
+
 
   const handleVideoLoaded = (camId, e) => {
     const videoDuration = e.target.duration;
@@ -637,6 +688,7 @@ function EditPage() {
               compactPositions={compactPositions}
               totalSessionDuration={totalSessionDuration}
               onRemoveClip={removeClip}
+              onClipReplay={handleClipReplay}
             />
           </div>
         </div>

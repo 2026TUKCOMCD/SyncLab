@@ -1,4 +1,4 @@
-function EditTimeline({ savedClips, cameras, compactTimeline, compactPositions, totalSessionDuration, onRemoveClip }) {
+function EditTimeline({ savedClips, cameras, compactTimeline, compactPositions, totalSessionDuration, onRemoveClip, onClipReplay }) {
   return (
     <div style={{ flex: 1 }}>
       <div className="edit-timeline-label">편집 타임라인 (저장된 클립)</div>
@@ -31,15 +31,17 @@ function EditTimeline({ savedClips, cameras, compactTimeline, compactPositions, 
                       backgroundColor: clipColor,
                       border: `2px solid ${clipColor}`,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      height: '100%', borderRadius: '4px', position: 'relative'
+                      height: '100%', borderRadius: '4px', position: 'relative',
+                      cursor: 'pointer'
                     }}
+                    onClick={() => onClipReplay && onClipReplay(clip)}
                   >
                     <div className="clip-info">
                       <div className="clip-info-text-main" style={{ fontSize: '12px', fontWeight: 'bold' }}>
                         {cameras.find(c => c.id === clip.cam)?.name}
                       </div>
                     </div>
-                    <button className="btn-clip-delete" onClick={() => onRemoveClip(clip.id)}>×</button>
+                    <button className="btn-clip-delete" onClick={(e) => { e.stopPropagation(); onRemoveClip(clip.id); }}>×</button>
                   </div>
                 </div>
               );
