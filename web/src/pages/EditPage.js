@@ -32,6 +32,8 @@ function EditPage() {
   const animationRef = useRef(null);
   const pendingProgramSeek = useRef(null); // 카메라 전환 시 새 프로그램 비디오 seek 대기값
   const replayEndRef = useRef(null); // 리플레이 종료 시점 저장
+  const previewClipIndexRef = useRef(null); // 전체 미리보기 현재 클립 인덱스
+  const isPreviewModeRef = useRef(false); // 전체 미리보기 모드 여부
   const settingsPanelRef = useRef(null);   // 드롭다운 외부 클릭 감지용
   const [showSettings, setShowSettings] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -161,8 +163,42 @@ function EditPage() {
           const calculateMasterTime = actualVideoTime + mainOffset;
           setCurrentTime(calculateMasterTime);
 
-          // 리플레이 종료 시점 도달 시 자동 정지
+          // 리플레이/미리보기 종료 시점 도달 시 처리
           if (replayEndRef.current !== null && calculateMasterTime >= replayEndRef.current) {
+            if (isPreviewModeRef.current) {
+              const sorted = [...savedClips].sort((a, b) => a.sequence - b.sequence);
+              const nextIndex = previewClipIndexRef.current + 1;
+              if (nextIndex < sorted.length) {
+                const next = sorted[nextIndex];
+                const isInMultiview = multiviewCameras.some(cam => cam && cam.id === next.cam);
+                if (isInMultiview) {
+                  previewClipIndexRef.current = nextIndex;
+                  replayEndRef.current = next.global_out;
+                  const masterTime = next.global_in;
+                  setCurrentTime(masterTime);
+                  setSelectedSourceCam(next.cam);
+                  multiviewCameras.forEach(cam => {
+                    if (!cam) return;
+                    const v = videoRefs.current[cam.id];
+                    if (!v) return;
+                    const offset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
+                    v.currentTime = Math.max(0, masterTime - offset);
+                  });
+                  const nextCam = cameras.find(c => c.id === next.cam);
+                  if (nextCam && programVideoRef.current) {
+                    const offset = (Number(nextCam.start_time) - Number(minAbsStart)) / 1000;
+                    pendingProgramSeek.current = Math.max(0, masterTime - offset);
+                    programVideoRef.current.currentTime = Math.max(0, masterTime - offset);
+                  }
+                  const nextMaster = videoRefs.current[next.cam];
+                  if (nextMaster) nextMaster.play().catch(() => {});
+                  if (programVideoRef.current) programVideoRef.current.play().catch(() => {});
+                  return;
+                }
+              }
+              isPreviewModeRef.current = false;
+              previewClipIndexRef.current = null;
+            }
             Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
             if (programVideoRef.current) programVideoRef.current.pause();
             replayEndRef.current = null;
@@ -488,6 +524,56 @@ function EditPage() {
     setSavedClips(savedClips.filter(clip => clip.id !== clipId));
   };
 
+  // 전체 클립 연속 재생 함수
+  const handlePreviewPlay = () => {
+    if (savedClips.length === 0) {
+      alert('저장된 클립이 없습니다.');
+      return;
+    }
+    const sorted = [...savedClips].sort((a, b) => a.sequence - b.sequence);
+    const first = sorted[0];
+    const isInMultiview = multiviewCameras.some(cam => cam && cam.id === first.cam);
+    if (!isInMultiview) {
+      alert(`클립 ①의 카메라가 멀티뷰에 없습니다.`);
+      return;
+    }
+
+    if (isPlaying) {
+      Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
+      if (programVideoRef.current) programVideoRef.current.pause();
+      setIsPlaying(false);
+    }
+
+    isPreviewModeRef.current = true;
+    previewClipIndexRef.current = 0;
+
+    setSelectedSourceCam(first.cam);
+    replayEndRef.current = first.global_out;
+
+    const masterTime = first.global_in;
+    setCurrentTime(masterTime);
+
+    multiviewCameras.forEach(cam => {
+      if (!cam) return;
+      const v = videoRefs.current[cam.id];
+      if (!v) return;
+      const offset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
+      v.currentTime = Math.max(0, masterTime - offset);
+    });
+
+    const firstCam = cameras.find(c => c.id === first.cam);
+    if (firstCam && programVideoRef.current) {
+      const offset = (Number(firstCam.start_time) - Number(minAbsStart)) / 1000;
+      pendingProgramSeek.current = Math.max(0, masterTime - offset);
+      programVideoRef.current.currentTime = Math.max(0, masterTime - offset);
+    }
+
+    const masterVideo = videoRefs.current[first.cam];
+    if (masterVideo) masterVideo.play().catch(() => {});
+    if (programVideoRef.current) programVideoRef.current.play().catch(() => {});
+    setIsPlaying(true);
+  };
+
   // 클립 클릭 시 해당 구간 리플레이 함수
   const handleClipReplay = (clip) => {
     const isInMultiview = multiviewCameras.some(cam => cam && cam.id === clip.cam);
@@ -600,6 +686,7 @@ function EditPage() {
         formatTime={formatTime}
         onSave={handleSavedClips}
         onLogoClick={() => navigate('/')}
+        onPreviewPlay={handlePreviewPlay}
       />
 
       <div className="main-content">

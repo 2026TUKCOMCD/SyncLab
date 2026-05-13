@@ -353,6 +353,16 @@ body {
   color: #374151;
 }
 
+.btn-preview {
+  background-color: #7c3aed;
+  color: white;
+}
+
+.btn-preview:disabled {
+  background-color: #c4b5fd;
+  cursor: not-allowed;
+}
+
 /* --- 메인 콘텐츠 영역 (사이드바 + 워크스페이스) --- */
 .main-content {
   flex: 1;

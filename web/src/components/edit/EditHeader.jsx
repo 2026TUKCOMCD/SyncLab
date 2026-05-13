@@ -1,6 +1,6 @@
-import { Save } from 'lucide-react';
+import { Save, Play } from 'lucide-react';
 
-function EditHeader({ savedClips, totalClipDuration, formatTime, onSave, onLogoClick }) {
+function EditHeader({ savedClips, totalClipDuration, formatTime, onSave, onLogoClick, onPreviewPlay }) {
   return (
     <div className="header-container">
       <div className="header-left">
@@ -10,6 +10,10 @@ function EditHeader({ savedClips, totalClipDuration, formatTime, onSave, onLogoC
         <div className="header-info-text">
           총 클립: {savedClips.length}개 | 총 길이: {formatTime(totalClipDuration)}
         </div>
+        <button className="btn-base btn-preview" onClick={onPreviewPlay} disabled={savedClips.length === 0}>
+          <Play size={18} />
+          전체 미리보기
+        </button>
         <button className="btn-base btn-primary" onClick={onSave}>
           <Save size={18} />
           프로젝트 저장
