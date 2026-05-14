@@ -4,7 +4,7 @@ import com.google.gson.annotations.SerializedName
 
 data class SessionInfo(
     @SerializedName("session_id") val sessionId: String,
-    @SerializedName("session_name") val sessionName: String,
+    @SerializedName("session_name") val sessionName: String? = null,
     @SerializedName("created_at") val createdAt: String ="",
     @SerializedName("participant_count") val participantCount: Int =0,
     @SerializedName("connect_code") val connectCode: String? = null,
@@ -13,7 +13,7 @@ data class SessionInfo(
 
 data class VideoStatus(
     @SerializedName("video_id") val videoId: String,
-    @SerializedName("file_name") val fileName: String,
+    @SerializedName("file_name") val fileName: String? = null,
     val status: String, // "PENDING", "PROCESSING", "COMPLETED"
     val timestamp: Long
 )

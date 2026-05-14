@@ -314,7 +314,7 @@ fun CurrentSessionCard(viewModel: HomeViewModel, navController: NavController? =
                     }
                    }
                 }
-                Text("📌 ${session.sessionName}", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
+                Text("📌 ${session.sessionName ?: "세션"}", fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 4.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(session.sessionId, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold, color = Color(0xFF3366FF))
                     IconButton(onClick = { clipboardManager.setText(AnnotatedString(session.sessionId)) }) {
@@ -449,7 +449,7 @@ fun VideoStatusItem(video: VideoStatus) {
             }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(video.fileName, fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
+                Text(video.fileName ?: "", fontWeight = FontWeight.Bold, fontSize = 14.sp, maxLines = 1)
                 val statusMsg = when(video.status) {
                     "PROCESSING" -> "프록시 생성 중..."
                     "PENDING" -> "대기 중..."
@@ -482,7 +482,7 @@ fun SessionHistoryItem(session: SessionInfo) {
         }
         Spacer(modifier = Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f)) {
-            Text(session.sessionName, fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
+            Text(session.sessionName ?: "알 수 없는 세션", fontWeight = FontWeight.SemiBold, fontSize = 14.sp)
             Text("${session.createdAt} · 참여자 ${session.participantCount}명", fontSize = 11.sp, color = Color(0xFF94A3B8))
         }
         Icon(Icons.Default.ChevronRight, null, tint = Color(0xFFCBD5E1), modifier = Modifier.size(16.dp))
