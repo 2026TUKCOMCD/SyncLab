@@ -47,6 +47,29 @@ fun UploadScreen(
 
     val activeWorks = workInfos.filter { !it.state.isFinished }
 
+    val notifiedJobs = remember { mutableSetOf<java.util.UUID>() }
+    LaunchedEffect(workInfos) {
+        workInfos.forEach { workInfo ->
+            if (workInfo.id !in notifiedJobs) {
+                when (workInfo.state) {
+                    WorkInfo.State.SUCCEEDED -> {
+                        val fileName = workInfo.tags.find { it.startsWith("name_") }
+                            ?.removePrefix("name_") ?: "파일"
+                        Toast.makeText(context, "'$fileName' 업로드 완료", Toast.LENGTH_SHORT).show()
+                        notifiedJobs.add(workInfo.id)
+                    }
+                    WorkInfo.State.FAILED -> {
+                        val fileName = workInfo.tags.find { it.startsWith("name_") }
+                            ?.removePrefix("name_") ?: "파일"
+                        Toast.makeText(context, "'$fileName' 업로드 실패", Toast.LENGTH_LONG).show()
+                        notifiedJobs.add(workInfo.id)
+                    }
+                    else -> {}
+                }
+            }
+        }
+    }
+
     var videoFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var fileToDelete by remember { mutableStateOf<File?>(null) }
