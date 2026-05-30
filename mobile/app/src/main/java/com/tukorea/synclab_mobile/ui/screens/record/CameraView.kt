@@ -35,7 +35,7 @@ fun CameraView(
     isRecording: Boolean,
     sessionId: String,
     onRecordingStarted: (Recording) -> Unit,
-    onRecordingFinished: (File) -> Unit
+    onRecordingFinished: (File, Int) -> Unit  // File, rotationDegrees
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -50,6 +50,8 @@ fun CameraView(
         }
     }
     val videoCaptureState = remember { mutableStateOf<VideoCapture<Recorder>?>(null) }
+    // Surface.ROTATION_* (0~3) → 실제 각도로 변환해서 보관
+    val currentRotationDegrees = remember { mutableIntStateOf(0) }
 
     // 방향이 바뀔 때마다 카메라 재바인딩하여 targetRotation 갱신
     LaunchedEffect(isPortrait) {
@@ -73,6 +75,7 @@ fun CameraView(
                     .defaultDisplay.rotation
             }
             videoCapture.targetRotation = displayRotation
+            currentRotationDegrees.intValue = displayRotation * 90
 
             videoCaptureState.value = videoCapture
 
@@ -115,7 +118,7 @@ fun CameraView(
                             handleUploadLogic(context, settingsRepository, file, sessionId)
                         }
 
-                        onRecordingFinished(file)
+                        onRecordingFinished(file, currentRotationDegrees.intValue)
                     } else {
                         if (file.exists()) file.delete()
                     }
@@ -163,6 +166,7 @@ private fun enqueueWork(context: Context, file: File, requireWifi: Boolean, sess
             "session_id" to sessionId
         ))
         .addTag("VideoUpload")
+        .addTag("name_${file.name}")
         .build()
 
     WorkManager.getInstance(context).enqueueUniqueWork(

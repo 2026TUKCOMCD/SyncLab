@@ -141,6 +141,7 @@ class VideoMetadata(BaseModel):
     absolute_end_time: int      # absoluteEndTime -> absolute_end_time
     duration: float
     orientation: str = "portrait"  # 촬영 방향 (portrait / landscape)
+    rotation: int = 0              # 실제 회전 각도: 0, 90, 180, 270
 
 
 class CompleteUploadRequest(BaseModel):

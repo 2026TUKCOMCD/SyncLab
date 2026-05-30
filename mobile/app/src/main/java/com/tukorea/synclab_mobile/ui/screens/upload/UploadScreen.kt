@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import androidx.work.*
+import com.tukorea.synclab_mobile.Screen
 import com.tukorea.synclab_mobile.data.repository.SettingsRepository
 import com.tukorea.synclab_mobile.ui.screens.home.HomeViewModel
 import com.tukorea.synclab_mobile.utils.VideoFileManager
@@ -40,12 +41,24 @@ fun UploadScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
-    // 1. 진행 중인 업로드 작업 관찰
     val workInfos by WorkManager.getInstance(context)
         .getWorkInfosByTagLiveData("VideoUpload")
         .observeAsState(emptyList())
 
     val activeWorks = workInfos.filter { !it.state.isFinished }
+
+    // 이번 세션에서 업로드 완료된 파일명 추적
+    val uploadedFileNames = remember { mutableStateOf(setOf<String>()) }
+    LaunchedEffect(workInfos) {
+        workInfos.forEach { workInfo ->
+            if (workInfo.state == WorkInfo.State.SUCCEEDED) {
+                val fileName = workInfo.tags.find { it.startsWith("name_") }?.removePrefix("name_")
+                if (fileName != null) {
+                    uploadedFileNames.value = uploadedFileNames.value + fileName
+                }
+            }
+        }
+    }
 
     val notifiedJobs = remember { mutableSetOf<java.util.UUID>() }
     LaunchedEffect(workInfos) {
@@ -73,6 +86,7 @@ fun UploadScreen(
     var videoFiles by remember { mutableStateOf<List<File>>(emptyList()) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var fileToDelete by remember { mutableStateOf<File?>(null) }
+    var showNoSessionDialog by remember { mutableStateOf(false) }
 
     val loadData = {
         videoFiles = VideoFileManager.getVideoFiles(context)
@@ -80,6 +94,7 @@ fun UploadScreen(
 
     LaunchedEffect(Unit) { loadData() }
 
+    // 파일 삭제 확인 다이얼로그
     if (showDeleteDialog && fileToDelete != null) {
         AlertDialog(
             onDismissRequest = { showDeleteDialog = false },
@@ -93,6 +108,27 @@ fun UploadScreen(
                 }) { Text("삭제", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold) }
             },
             dismissButton = { TextButton(onClick = { showDeleteDialog = false }) { Text("취소") } }
+        )
+    }
+
+    // 세션 없음 안내 다이얼로그
+    if (showNoSessionDialog) {
+        AlertDialog(
+            onDismissRequest = { showNoSessionDialog = false },
+            shape = RoundedCornerShape(24.dp),
+            title = { Text("세션 없음", fontWeight = FontWeight.Bold) },
+            text = { Text("활성 세션이 없습니다.\n홈 화면에서 세션에 먼저 참여해주세요.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    showNoSessionDialog = false
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(Screen.Upload.route) { inclusive = false }
+                    }
+                }) { Text("홈으로 이동", fontWeight = FontWeight.Bold, color = Color(0xFF3366FF)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showNoSessionDialog = false }) { Text("닫기") }
+            }
         )
     }
 
@@ -139,14 +175,38 @@ fun UploadScreen(
 
             if (videoFiles.isEmpty()) {
                 item {
-                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                        Text("저장된 영상이 없습니다.", color = Color(0xFF94A3B8))
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(220.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Videocam,
+                            contentDescription = null,
+                            tint = Color(0xFFCBD5E1),
+                            modifier = Modifier.size(48.dp)
+                        )
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Text("저장된 영상이 없습니다.", color = Color(0xFF94A3B8), fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Button(
+                            onClick = { navController.navigate(Screen.Record.route) },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3366FF)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Icon(Icons.Default.FiberManualRecord, null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("녹화하러 가기", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             } else {
                 items(videoFiles) { file ->
                     VideoFileItem(
                         file = file,
+                        isUploaded = file.name in uploadedFileNames.value,
                         onDelete = { fileToDelete = file; showDeleteDialog = true },
                         onUpload = {
                             scope.launch {
@@ -157,10 +217,9 @@ fun UploadScreen(
                                 }
 
                                 val currentSessionId = homeViewModel.currentSession?.sessionId
-
                                 if (currentSessionId.isNullOrBlank()) {
-                                    Toast.makeText(context, "세션 정보가 없습니다. 다시 로그인해주세요.", Toast.LENGTH_SHORT).show()
-                                    Log.e("UploadScreen", "❌ 세션 ID 없음: homeViewModel.currentSession is null")
+                                    Log.e("UploadScreen", "세션 ID 없음")
+                                    showNoSessionDialog = true
                                     return@launch
                                 }
 
@@ -175,7 +234,7 @@ fun UploadScreen(
                                     .setInputData(workDataOf(
                                         "video_path" to file.absolutePath,
                                         "json_path" to jsonFile.absolutePath,
-                                        "session_id" to currentSessionId // 👈 데이터 전달!
+                                        "session_id" to currentSessionId
                                     ))
                                     .build()
 
@@ -198,6 +257,7 @@ fun UploadScreen(
 fun ActiveUploadItem(workInfo: WorkInfo, onCancel: () -> Unit) {
     val progress = workInfo.progress.getFloat("progress", 0f)
     val fileName = workInfo.tags.find { it.startsWith("name_") }?.removePrefix("name_") ?: "파일 업로드 중"
+    val isRunning = workInfo.state == WorkInfo.State.RUNNING
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -209,7 +269,11 @@ fun ActiveUploadItem(workInfo: WorkInfo, onCancel: () -> Unit) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = if (workInfo.state == WorkInfo.State.RUNNING) "서버 전송 중..." else "대기 중...",
+                        text = when (workInfo.state) {
+                            WorkInfo.State.RUNNING -> "서버 전송 중..."
+                            WorkInfo.State.BLOCKED -> "조건 대기 중 (Wi-Fi 필요)"
+                            else -> "업로드 대기 중..."
+                        },
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF3366FF)
@@ -221,18 +285,32 @@ fun ActiveUploadItem(workInfo: WorkInfo, onCancel: () -> Unit) {
                 }
             }
             Spacer(modifier = Modifier.height(8.dp))
-            LinearProgressIndicator(
-                progress = { progress },
-                modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
-                color = Color(0xFF3366FF),
-                trackColor = Color(0xFFF1F5F9)
-            )
+            if (isRunning) {
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+                    color = Color(0xFF3366FF),
+                    trackColor = Color(0xFFF1F5F9)
+                )
+            } else {
+                // ENQUEUED / BLOCKED: 불확정 애니메이션으로 대기 중임을 표시
+                LinearProgressIndicator(
+                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+                    color = Color(0xFF3366FF),
+                    trackColor = Color(0xFFF1F5F9)
+                )
+            }
         }
     }
 }
 
 @Composable
-fun VideoFileItem(file: File, onDelete: () -> Unit, onUpload: () -> Unit) {
+fun VideoFileItem(
+    file: File,
+    isUploaded: Boolean,
+    onDelete: () -> Unit,
+    onUpload: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         color = Color.White,
@@ -255,7 +333,22 @@ fun VideoFileItem(file: File, onDelete: () -> Unit, onUpload: () -> Unit) {
                 Text("${String.format("%.1f", file.length() / (1024.0 * 1024.0))} MB", fontSize = 11.sp, color = Color.Gray)
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                CustomSmallButton(Icons.Default.CloudUpload, Color(0xFF3366FF), Color(0xFFEEF2FF), onUpload)
+                if (isUploaded) {
+                    // 업로드 완료 상태 표시
+                    Box(
+                        modifier = Modifier.size(36.dp).clip(CircleShape).background(Color(0xFFDCFCE7)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "업로드 완료",
+                            tint = Color(0xFF16A34A),
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                } else {
+                    CustomSmallButton(Icons.Default.CloudUpload, Color(0xFF3366FF), Color(0xFFEEF2FF), onUpload)
+                }
                 CustomSmallButton(Icons.Default.Delete, Color(0xFFEF4444), Color(0xFFFFEFEF), onDelete)
             }
         }

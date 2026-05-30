@@ -23,7 +23,10 @@ data class VideoMetadata(
     val sessionId: String? = null,
 
     @SerializedName("orientation")
-    val orientation: String = "portrait"
+    val orientation: String = "portrait",
+
+    @SerializedName("rotation")
+    val rotation: Int = 0  // 실제 회전 각도: 0, 90, 180, 270
 ) {
     fun toJson(): String = GsonBuilder().create().toJson(this)
 

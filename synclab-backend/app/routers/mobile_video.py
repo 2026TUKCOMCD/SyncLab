@@ -36,7 +36,7 @@ s3_client = boto3.client(
 # 백그라운드 작업 (프록시 생성)
 # ============================================
 
-async def create_proxy_video(original_key: str, video_id: int, orientation: str = "portrait"):
+async def create_proxy_video(original_key: str, video_id: int, orientation: str = "portrait", rotation: int = 0):
     try:
         # original_key 예: "701/filename.mp4"
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -47,12 +47,26 @@ async def create_proxy_video(original_key: str, video_id: int, orientation: str 
         # 1. 원본 다운로드
         s3_client.download_file(S3_BUCKET_ORIGINAL, original_key, original_local_path)
 
-        # 2. FFmpeg 변환 - 촬영 방향에 맞게 스케일 조정
+        # 2. FFmpeg 변환 - rotation으로 픽셀 회전 후 스케일 조정
+        # rotation 값에 따라 transpose 필터 결정
+        # transpose=1: 시계방향 90° / transpose=2: 반시계방향 90° / hflip+vflip: 180°
+        ROTATION_FILTER = {
+            90:  "transpose=1",
+            180: "hflip,vflip",
+            270: "transpose=2",
+        }
+        rotation_filter = ROTATION_FILTER.get(rotation)  # 0도면 None (필터 불필요)
+
+        # 회전 후 최종 방향에 맞게 스케일 조정
         # 세로(portrait): 480x854 / 가로(landscape): 854x480
         if orientation == "portrait":
-            vf = 'scale=480:854:force_original_aspect_ratio=decrease,pad=480:854:(ow-iw)/2:(oh-ih)/2'
+            scale_filter = "scale=480:854:force_original_aspect_ratio=decrease,pad=480:854:(ow-iw)/2:(oh-ih)/2"
         else:
-            vf = 'scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2'
+            scale_filter = "scale=854:480:force_original_aspect_ratio=decrease,pad=854:480:(ow-iw)/2:(oh-ih)/2"
+
+        vf = f"{rotation_filter},{scale_filter}" if rotation_filter else scale_filter
+
+        print(f"🎬 FFmpeg 처리 - rotation={rotation}°, orientation={orientation}, vf={vf}")
 
         stream = ffmpeg.input(original_local_path)
         stream = ffmpeg.output(
@@ -167,7 +181,8 @@ async def complete_upload(request: CompleteUploadRequest, background_tasks: Back
         
         if video_id:
             orientation = request.metadata.orientation
-            background_tasks.add_task(create_proxy_video, full_s3_key, video_id, orientation)
+            rotation = request.metadata.rotation
+            background_tasks.add_task(create_proxy_video, full_s3_key, video_id, orientation, rotation)
         
         return CompleteUploadResponse(
             status="success",
