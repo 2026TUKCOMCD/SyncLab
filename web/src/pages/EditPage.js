@@ -349,6 +349,9 @@ function EditPage() {
 
   // 비디오 리소스에서 멀티뷰 소스로 비디오 선택 시 multiCamers 배열로 비디오를 추가하는 함수
   const addCameraToMultiview = (camera) => {
+    const alreadyExists = multiviewCameras.some(cam => cam?.id === camera.id);  //2026.06.15 리소스 중복 추가 차단
+    if (alreadyExists) return;
+
     const emptySlotIndex = multiviewCameras.findIndex(cam => cam === null);
     if (emptySlotIndex !== -1) {
       const newMultiview = [...multiviewCameras];
