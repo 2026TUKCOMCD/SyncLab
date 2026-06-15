@@ -956,13 +956,18 @@ body {
   max-width: 90%;
 }
 
-.clip-item-content:hover .clip-seq-label {
+.clip-wrapper:hover .clip-seq-label {
   opacity: 0;
 }
 
 .clip-hover-overlay {
   position: absolute;
-  inset: 0;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 64px;
+  width: 100%;
+  height: 80%;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -970,11 +975,14 @@ body {
   background: rgba(0, 0, 0, 0.35);
   border-radius: 4px;
   opacity: 0;
+  pointer-events: none;
   transition: opacity 0.15s;
+  z-index: 10;
 }
 
-.clip-item-content:hover .clip-hover-overlay {
+.clip-wrapper:hover .clip-hover-overlay {
   opacity: 1;
+  pointer-events: auto;
 }
 
 .clip-icon-btn {

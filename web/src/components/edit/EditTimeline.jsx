@@ -47,10 +47,10 @@ function EditTimeline({ savedClips, cameras, compactTimeline, compactPositions, 
                     <span className="clip-seq-label" style={{ color: getTextColor(clipColor) }}>
                       {clip.sequence} {cameras.find(c => c.id === clip.cam)?.name}
                     </span>
-                    <div className="clip-hover-overlay">
-                      <button className="clip-icon-btn clip-icon-play" onClick={() => onClipReplay && onClipReplay(clip)}>▶</button>
-                      <button className="clip-icon-btn clip-icon-del" onClick={(e) => { e.stopPropagation(); onRemoveClip(clip.id); }}>×</button>
-                    </div>
+                  </div>
+                  <div className="clip-hover-overlay">
+                    <button className="clip-icon-btn clip-icon-play" onClick={() => onClipReplay && onClipReplay(clip)}>▶</button>
+                    <button className="clip-icon-btn clip-icon-del" onClick={(e) => { e.stopPropagation(); onRemoveClip(clip.id); }}>×</button>
                   </div>
                 </div>
               );
