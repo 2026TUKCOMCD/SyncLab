@@ -468,8 +468,16 @@ function EditPage() {
   // In 버튼 클릭 시 수행되는 함수로 타임라인의 현재 시점에 In 마커 생성
   const setIn = () => {
     if (selectedSourceCam === null) return;
-    setInPoint(currentTime);
-    if (outPoint !== null && currentTime > outPoint) setOutPoint(null);
+    let t = currentTime;
+    // 현재 위치가 기존 클립 내부에 있으면 해당 클립 끝점으로 스냅 (재생 중 부동소수점 오차로 인한 중복 방지)
+    for (const clip of savedClips) {
+      if (t >= clip.global_in && t < clip.global_out) {
+        t = clip.global_out;
+        break;
+      }
+    }
+    setInPoint(t);
+    if (outPoint !== null && t > outPoint) setOutPoint(null);
   };
 
   // Out 버튼 클릭 시 수행되는 함수로 타임라인의 현재 시점에 Out 마커 생성
