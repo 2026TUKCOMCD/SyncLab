@@ -1221,3 +1221,258 @@ body {
   text-align: center;
   font-size: 0.9rem;
 }
+
+/* --- 하이라이트 마킹 버튼 --- */
+.btn-highlight {
+  background-color: #f59e0b;
+  color: white;
+}
+
+.btn-highlight:disabled {
+  background-color: #fcd34d;
+  cursor: not-allowed;
+}
+
+/* --- 슬로우 모션 배지 (편집 타임라인 클립) --- */
+.clip-slowmo-badge {
+  display: inline-block;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: 3px;
+  padding: 0 3px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  margin-left: 2px;
+}
+
+/* --- 하이라이트 편집 패널 오버레이 --- */
+.highlight-panel-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.highlight-panel {
+  background: #fff;
+  border-radius: 14px;
+  width: 580px;
+  max-width: 95vw;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 48px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.highlight-panel-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 20px 24px 16px;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.highlight-panel-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+  margin: 0 0 4px;
+}
+
+.highlight-panel-subtitle {
+  font-size: 13px;
+  color: #6b7280;
+  margin: 0;
+}
+
+.highlight-panel-close {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #6b7280;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.highlight-panel-close:hover {
+  background: #f3f4f6;
+  color: #111827;
+}
+
+/* 클립 목록 */
+.highlight-clip-list {
+  overflow-y: auto;
+  flex: 1;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.highlight-clip-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 10px 14px;
+  transition: opacity 0.2s;
+}
+
+.highlight-clip-row--excluded {
+  opacity: 0.45;
+}
+
+.highlight-seq {
+  font-size: 14px;
+  font-weight: 700;
+  color: #6b7280;
+  width: 18px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.highlight-cam-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+}
+
+.highlight-cam-color {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.highlight-cam-name {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111827;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.highlight-cam-duration {
+  font-size: 12px;
+  color: #9ca3af;
+  flex-shrink: 0;
+}
+
+/* 슬로우 모션 버튼 */
+.highlight-slowmo-btns {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.highlight-slowmo-btn {
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: #fff;
+  color: #374151;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.highlight-slowmo-btn:hover:not(:disabled) {
+  border-color: #3b82f6;
+  color: #3b82f6;
+}
+
+.highlight-slowmo-btn--active {
+  background: #3b82f6;
+  color: #fff;
+  border-color: #3b82f6;
+}
+
+.highlight-slowmo-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+/* 순서 이동 버튼 */
+.highlight-order-btns {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.highlight-order-btn {
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  border-radius: 4px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #374151;
+  padding: 0;
+  transition: background 0.15s;
+}
+
+.highlight-order-btn:hover:not(:disabled) {
+  background: #e5e7eb;
+}
+
+.highlight-order-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* 포함 토글 */
+.highlight-include-toggle {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: #374151;
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.highlight-include-toggle input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+}
+
+/* 하단 푸터 */
+.highlight-panel-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 24px;
+  border-top: 1px solid #e5e7eb;
+  background: #f9fafb;
+}
+
+.highlight-panel-count {
+  font-size: 13px;
+  color: #6b7280;
+  font-weight: 500;
+}
+
+.highlight-panel-actions {
+  display: flex;
+  gap: 8px;
+}

@@ -46,6 +46,11 @@ function EditTimeline({ savedClips, cameras, compactTimeline, compactPositions, 
                   >
                     <span className="clip-seq-label" style={{ color: getTextColor(clipColor) }}>
                       {clip.sequence} {cameras.find(c => c.id === clip.cam)?.name}
+                      {clip.slow_rate && clip.slow_rate < 1 && (
+                        <span className="clip-slowmo-badge">
+                          {clip.slow_rate === 0.5 ? ' ½x' : ' ¼x'}
+                        </span>
+                      )}
                     </span>
                   </div>
                   <div className="clip-hover-overlay">

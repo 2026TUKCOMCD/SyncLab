@@ -233,6 +233,7 @@ class ClipData(BaseModel):
     start_seek: float
     end_seek: float
     duration: float
+    slow_rate: Optional[float] = 1.0
 
 # 편집 전체 데이터
 class SavedEditRequest(BaseModel):

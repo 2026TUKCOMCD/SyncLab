@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward, Plus, Settings } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Plus, Settings, Star } from 'lucide-react';
 
 function ControlBar({
   selectedSourceCam, isPlaying, currentTime, totalSessionDuration,
@@ -6,7 +6,7 @@ function ControlBar({
   videoRefs, programVideoRef, settingsPanelRef, showSettings,
   onSetCurrentTime, onTogglePlay, onSetIn, onSetOut, onAddClip,
   onSetShowSettings, onSetPlaybackRate, onSetFps, onSetSkipFrames, onToggleCompact,
-  inPoint, outPoint,
+  inPoint, outPoint, onHighlightMark,
 }) {
   return (
     <div className="timeline-header">
@@ -65,6 +65,16 @@ function ControlBar({
         >
           <Plus size={16} />
           클립 추가
+        </button>
+
+        <button
+          className="btn-base btn-highlight"
+          onClick={onHighlightMark}
+          disabled={selectedSourceCam === null}
+          title="현재 시점 ±3초 하이라이트 자동 생성"
+        >
+          <Star size={16} />
+          하이라이트 마킹
         </button>
 
         {/* 설정 드롭다운 */}

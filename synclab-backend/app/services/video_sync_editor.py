@@ -38,25 +38,28 @@ class VideoEditServer:
         print(f"[S3] Download complete: {local_path}")
         return local_path
 
-    def cut_and_standardize(self, input_path: str, start: float, duration: float, output_path: str):
-        """자르기 + 규격 통일 (싱크 방지 핵심)"""
-        cmd = [
-            'ffmpeg',
-            '-ss', str(start),
-            '-t', str(duration),
-            '-i', input_path,
-            '-vf', 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30',
-            '-c:v', 'libx264',
-            '-preset', 'ultrafast',
-            '-crf', '23',
-            '-c:a', 'aac',
-            '-ar', '44100',
-            '-ac', '2',
-            '-y',
-            output_path
-        ]
+    def cut_and_standardize(self, input_path: str, start: float, duration: float, output_path: str, slow_rate: float = 1.0):
+        """자르기 + 규격 통일 + 슬로우 모션 (싱크 방지 핵심)"""
+        vf_chain = 'scale=1920:1080:force_original_aspect_ratio=decrease,pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30'
 
-        print(f"[FFmpeg] input={input_path!r}, start={start}, duration={duration}")
+        cmd = ['ffmpeg', '-ss', str(start), '-t', str(duration), '-i', input_path]
+
+        if 0 < slow_rate < 1.0:
+            pts = 1.0 / slow_rate
+            vf_chain += f',setpts={pts:.6f}*PTS'
+            # atempo 범위는 0.5~2.0 이므로 0.25x는 체이닝 처리
+            if slow_rate >= 0.5:
+                af_chain = f'atempo={slow_rate:.4f}'
+            else:
+                af_chain = f'atempo=0.5,atempo={slow_rate * 2:.4f}'
+            cmd += ['-vf', vf_chain, '-af', af_chain]
+        else:
+            cmd += ['-vf', vf_chain]
+
+        cmd += ['-c:v', 'libx264', '-preset', 'ultrafast', '-crf', '23',
+                '-c:a', 'aac', '-ar', '44100', '-ac', '2', '-y', output_path]
+
+        print(f"[FFmpeg] input={input_path!r}, start={start}, duration={duration}, slow_rate={slow_rate}")
         result = subprocess.run(cmd, capture_output=True)
         print(f"[FFmpeg] returncode={result.returncode}")
 
@@ -134,7 +137,8 @@ class VideoEditServer:
                     input_path,
                     float(edit['start_seek']),
                     float(edit['duration']),
-                    str(seg_path)
+                    str(seg_path),
+                    slow_rate=float(edit.get('slow_rate', 1.0))
                 )
                 segment_paths.append(str(seg_path))
 

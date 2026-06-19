@@ -9,6 +9,7 @@ import ProgramMonitor from '../components/edit/ProgramMonitor';
 import ControlBar from '../components/edit/ControlBar';
 import SourceTimeline from '../components/edit/SourceTimeline';
 import EditTimeline from '../components/edit/EditTimeline';
+import HighlightPanel from '../components/edit/HighlightPanel';
 
 // API 베이스 URL: REACT_APP_API_URL 환경변수 → 없으면 빈 문자열(상대경로, Docker nginx 프록시 사용)
 const API_BASE = process.env.REACT_APP_API_URL || '';
@@ -41,6 +42,8 @@ function EditPage() {
   const [fps, setFps] = useState(30);
   const [skipFrames, setSkipFrames] = useState(1);
   const [compactTimeline, setCompactTimeline] = useState(false);
+  const [highlightClips, setHighlightClips] = useState([]);
+  const [showHighlightPanel, setShowHighlightPanel] = useState(false);
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
   const [cameras, setCameras] = useState([]);
   const [sessionList, setSessionList] = useState([]); // 사용자가 참여한 여러 세션 목록을 위한 변수
@@ -543,6 +546,80 @@ function EditPage() {
     setSavedClips(savedClips.filter(clip => clip.id !== clipId));
   };
 
+  // 하이라이트 마킹 버튼 클릭 시 현재 시점 ±3초 구간을 카메라별로 자동 생성
+  const handleHighlightMark = () => {
+    if (cameras.length === 0) {
+      alert('카메라가 없습니다.');
+      return;
+    }
+    const RADIUS = 3;
+    const generated = cameras
+      .filter(cam => cam.videoUrl)
+      .map((cam, index) => {
+        const camGlobalStart = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
+        const camGlobalEnd = (Number(cam.end_time) - Number(minAbsStart)) / 1000;
+        const globalIn = Math.max(camGlobalStart, currentTime - RADIUS);
+        const globalOut = Math.min(camGlobalEnd, currentTime + RADIUS);
+        if (globalOut <= globalIn) return null;
+        return {
+          id: Date.now() + index,
+          camId: cam.id,
+          camName: cam.name,
+          camColor: cam.color,
+          video_url: cam.videoUrl,
+          global_in: globalIn,
+          global_out: globalOut,
+          start_seek: Math.max(0, globalIn - camGlobalStart),
+          end_seek: Math.max(0, globalOut - camGlobalStart),
+          duration: globalOut - globalIn,
+          included: true,
+          slow_rate: 1.0,
+          sequence: index + 1,
+        };
+      })
+      .filter(Boolean);
+
+    if (generated.length === 0) {
+      alert('현재 시점에서 생성 가능한 하이라이트 클립이 없습니다.');
+      return;
+    }
+    setHighlightClips(generated);
+    setShowHighlightPanel(true);
+  };
+
+  // 하이라이트 패널에서 확인 클릭 시 savedClips에 추가
+  const handleHighlightConfirm = (selectedClips) => {
+    const newClips = selectedClips.map((clip, idx) => ({
+      id: Date.now() + idx,
+      sequence: 0,
+      video_url: clip.video_url,
+      cam: clip.camId,
+      start_seek: clip.start_seek,
+      end_seek: clip.end_seek,
+      duration: clip.duration,
+      global_in: clip.global_in,
+      global_out: clip.global_out,
+      slow_rate: clip.slow_rate,
+      _insertOrder: idx,
+    }));
+
+    const combined = [...savedClips, ...newClips];
+    const sorted = [...combined].sort((a, b) => {
+      if (a.global_in !== b.global_in) return a.global_in - b.global_in;
+      const aOrder = a._insertOrder ?? -1;
+      const bOrder = b._insertOrder ?? -1;
+      return aOrder - bOrder;
+    });
+    const updated = sorted.map(({ _insertOrder, ...rest }, idx) => ({
+      ...rest,
+      sequence: idx + 1,
+    }));
+
+    setSavedClips(updated);
+    setShowHighlightPanel(false);
+    setHighlightClips([]);
+  };
+
   // 전체 클립 연속 재생 함수
   const handlePreviewPlay = () => {
     if (savedClips.length === 0) {
@@ -671,7 +748,8 @@ function EditPage() {
       end_seek: clip.end_seek,
       duration: clip.duration,
       global_in: clip.global_in,
-      global_out: clip.global_out
+      global_out: clip.global_out,
+      slow_rate: clip.slow_rate || 1.0,
     }));
     navigate('/export', { state: { clips: clipArrays, sessionId: activeSessionId } });
   };
@@ -689,6 +767,14 @@ function EditPage() {
   /* 화면 구성 부분 */
   return (
     <div className="edit-page-container">
+      {showHighlightPanel && (
+        <HighlightPanel
+          highlightClips={highlightClips}
+          onConfirm={handleHighlightConfirm}
+          onClose={() => setShowHighlightPanel(false)}
+        />
+      )}
+
       <EditHeader
         savedClips={savedClips}
         totalClipDuration={totalClipDuration}
@@ -757,6 +843,7 @@ function EditPage() {
               onSetIn={setIn}
               onSetOut={setOut}
               onAddClip={addClip}
+              onHighlightMark={handleHighlightMark}
               onSetShowSettings={setShowSettings}
               onSetPlaybackRate={setPlaybackRate}
               onSetFps={setFps}
