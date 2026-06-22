@@ -229,11 +229,11 @@ function EditPage() {
               if (v.paused) v.play().catch(() => { });
 
               const diff = v.currentTime - targetTime;
-              if (Math.abs(diff) > 0.5) {
+              if (Math.abs(diff) > 2.0) {
                 v.currentTime = targetTime;
               }
               else if (Math.abs(diff) > 0.05) {
-                v.playbackRate = diff > 0 ? 0.98 : 1.02;
+                v.playbackRate = diff > 0 ? 0.97 : 1.03;
               }
               else {
                 v.playbackRate = 1.0;
@@ -252,19 +252,43 @@ function EditPage() {
 
       animationRef.current = requestAnimationFrame(updateAllSync);
 
-      // 버퍼링 해소 시 루프 재시작
       const masterVideo = videoRefs.current[selectedSourceCam];
+
+      // 버퍼링 해소 시 루프 재시작
       const handleCanPlay = () => {
         if (animationRef.current === null) {
           animationRef.current = requestAnimationFrame(updateAllSync);
         }
       };
+
+      // 마스터 버퍼링 시작 → 슬레이브 같이 정지 (drift 방지)
+      const handleWaiting = () => {
+        multiviewCameras.forEach(cam => {
+          if (!cam || cam.id === selectedSourceCam) return;
+          const v = videoRefs.current[cam.id];
+          if (v && !v.paused) v.pause();
+        });
+      };
+
+      // 마스터 버퍼링 해소 → 슬레이브 같이 재개 (seek 불필요)
+      const handlePlaying = () => {
+        multiviewCameras.forEach(cam => {
+          if (!cam || cam.id === selectedSourceCam) return;
+          const v = videoRefs.current[cam.id];
+          if (v && v.paused) v.play().catch(() => {});
+        });
+      };
+
       masterVideo?.addEventListener('canplay', handleCanPlay);
+      masterVideo?.addEventListener('waiting', handleWaiting);
+      masterVideo?.addEventListener('playing', handlePlaying);
 
       return () => {
         cancelAnimationFrame(animationRef.current);
         animationRef.current = null;
         masterVideo?.removeEventListener('canplay', handleCanPlay);
+        masterVideo?.removeEventListener('waiting', handleWaiting);
+        masterVideo?.removeEventListener('playing', handlePlaying);
       };
     }
 
