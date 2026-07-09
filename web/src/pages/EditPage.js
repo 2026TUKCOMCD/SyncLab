@@ -39,6 +39,7 @@ function EditPage() {
   const settingsPanelRef = useRef(null);   // 드롭다운 외부 클릭 감지용
   const [showSettings, setShowSettings] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+  const playbackRateRef = useRef(1); // 동기화 루프(rAF)에서 최신 재생 속도를 읽기 위한 ref
   const [fps, setFps] = useState(30);
   const [skipFrames, setSkipFrames] = useState(1);
   const [compactTimeline, setCompactTimeline] = useState(false);
@@ -145,6 +146,7 @@ function EditPage() {
 
   // 재생 속도 변경 시 모든 비디오에 즉시 반영
   useEffect(() => {
+    playbackRateRef.current = playbackRate;
     Object.values(videoRefs.current).forEach(v => { if (v) v.playbackRate = playbackRate; });
     if (programVideoRef.current) programVideoRef.current.playbackRate = playbackRate;
   }, [playbackRate]);
@@ -201,9 +203,17 @@ function EditPage() {
                     pendingProgramSeek.current = Math.max(0, masterTime - offset);
                     programVideoRef.current.currentTime = Math.max(0, masterTime - offset);
                   }
+                  // 클립별 슬로우 모션(slow_rate) 반영
+                  playbackRateRef.current = next.slow_rate || 1.0;
                   const nextMaster = videoRefs.current[next.cam];
-                  if (nextMaster) nextMaster.play().catch(() => {});
-                  if (programVideoRef.current) programVideoRef.current.play().catch(() => {});
+                  if (nextMaster) {
+                    nextMaster.playbackRate = playbackRateRef.current;
+                    nextMaster.play().catch(() => {});
+                  }
+                  if (programVideoRef.current) {
+                    programVideoRef.current.playbackRate = playbackRateRef.current;
+                    programVideoRef.current.play().catch(() => {});
+                  }
                   return;
                 }
               }
@@ -214,6 +224,10 @@ function EditPage() {
             if (programVideoRef.current) programVideoRef.current.pause();
             replayEndRef.current = null;
             setIsPlaying(false);
+            // 클립 재생 종료 → 전역 재생 속도로 복원 (ref뿐 아니라 실제 video 엘리먼트에도 반영)
+            playbackRateRef.current = playbackRate;
+            Object.values(videoRefs.current).forEach(v => { if (v) v.playbackRate = playbackRate; });
+            if (programVideoRef.current) programVideoRef.current.playbackRate = playbackRate;
             return;
           }
 
@@ -229,14 +243,16 @@ function EditPage() {
               if (v.paused) v.play().catch(() => { });
 
               const diff = v.currentTime - targetTime;
+              const baseRate = playbackRateRef.current;
               if (Math.abs(diff) > 2.0) {
                 v.currentTime = targetTime;
+                v.playbackRate = baseRate;
               }
               else if (Math.abs(diff) > 0.05) {
-                v.playbackRate = diff > 0 ? 0.97 : 1.03;
+                v.playbackRate = diff > 0 ? baseRate * 0.97 : baseRate * 1.03;
               }
               else {
-                v.playbackRate = 1.0;
+                v.playbackRate = baseRate;
               }
             } else {
               // 시작 시간 전이거나 영상 범위 밖 — 정지 및 위치 초기화
@@ -688,9 +704,17 @@ function EditPage() {
       programVideoRef.current.currentTime = Math.max(0, masterTime - offset);
     }
 
+    // 클립별 슬로우 모션(slow_rate) 반영
+    playbackRateRef.current = first.slow_rate || 1.0;
     const masterVideo = videoRefs.current[first.cam];
-    if (masterVideo) masterVideo.play().catch(() => {});
-    if (programVideoRef.current) programVideoRef.current.play().catch(() => {});
+    if (masterVideo) {
+      masterVideo.playbackRate = playbackRateRef.current;
+      masterVideo.play().catch(() => {});
+    }
+    if (programVideoRef.current) {
+      programVideoRef.current.playbackRate = playbackRateRef.current;
+      programVideoRef.current.play().catch(() => {});
+    }
     setIsPlaying(true);
   };
 
@@ -729,9 +753,17 @@ function EditPage() {
       programVideoRef.current.currentTime = Math.max(0, masterTime - offset);
     }
 
+    // 클립별 슬로우 모션(slow_rate) 반영
+    playbackRateRef.current = clip.slow_rate || 1.0;
     const masterVideo = videoRefs.current[clip.cam];
-    if (masterVideo) masterVideo.play().catch(() => {});
-    if (programVideoRef.current) programVideoRef.current.play().catch(() => {});
+    if (masterVideo) {
+      masterVideo.playbackRate = playbackRateRef.current;
+      masterVideo.play().catch(() => {});
+    }
+    if (programVideoRef.current) {
+      programVideoRef.current.playbackRate = playbackRateRef.current;
+      programVideoRef.current.play().catch(() => {});
+    }
     setIsPlaying(true);
   };
 
