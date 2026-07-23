@@ -14,7 +14,7 @@ services:
       - mysql_data:/var/lib/mysql
     ports:
       # 외부에서 DB 직접 접근 (개발용, 운영에선 제거 가능)
-      - "3306:3306"
+      - "3307:3306"
     networks:
       - synclab-network
     healthcheck:

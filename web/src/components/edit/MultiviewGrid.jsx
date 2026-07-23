@@ -1,4 +1,6 @@
-function MultiviewGrid({ multiviewCameras, selectedSourceCam, currentTime, minAbsStart, videoRefs, onSlotClick, onRemoveCamera, onVideoLoaded, getProxyUrl }) {
+const ROLE_LABELS = { left: '왼쪽 골대', center: '센터', right: '오른쪽 골대' };
+
+function MultiviewGrid({ multiviewCameras, selectedSourceCam, currentTime, minAbsStart, videoRefs, onSlotClick, onRemoveCamera, onVideoLoaded, getProxyUrl, cameraRoles = {} }) {
   return (
     <div className="multiview-wrapper">
       <h2 className="section-title" style={{ fontSize: '20px', marginBottom: '8px' }}>멀티뷰 소스</h2>
@@ -43,6 +45,9 @@ function MultiviewGrid({ multiviewCameras, selectedSourceCam, currentTime, minAb
                 )}
                 <div className="cam-label" style={{ backgroundColor: cam.color || '#333' }}>
                   {cam.name}
+                  {cameraRoles[cam.id] && (
+                    <span className="cam-role-badge"> · {ROLE_LABELS[cameraRoles[cam.id]]}</span>
+                  )}
                 </div>
                 <button
                   className="btn-remove-cam"

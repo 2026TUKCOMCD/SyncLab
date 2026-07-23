@@ -1,4 +1,9 @@
-function CameraResourceList({ sessionList, activeSessionId, onSessionChange, cameras, multiviewCameras, onCameraClick, getProxyUrl }) {
+const ROLE_LABELS = { left: '왼쪽 골대', center: '센터', right: '오른쪽 골대' };
+
+function CameraResourceList({
+  sessionList, activeSessionId, onSessionChange, cameras, multiviewCameras, onCameraClick, getProxyUrl,
+  cameraRoles = {}, onSetCameraRole,
+}) {
   return (
     <div className="sidebar">
       {/* 세션 선택 영역 */}
@@ -84,9 +89,22 @@ function CameraResourceList({ sessionList, activeSessionId, onSessionChange, cam
                   <div style={{ fontWeight: 'bold', fontSize: '14px', marginBottom: '2px' }}>
                     {cam.name}
                   </div>
-                  <div style={{ fontSize: '11px', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  <div style={{ fontSize: '11px', color: '#666', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', marginBottom: '6px' }}>
                     {cam.file_name}
                   </div>
+                  {onSetCameraRole && (
+                    <select
+                      className="camera-role-select"
+                      value={cameraRoles[cam.id] || ''}
+                      onClick={(e) => e.stopPropagation()}
+                      onChange={(e) => onSetCameraRole(cam.id, e.target.value || null)}
+                    >
+                      <option value="">방향 미지정</option>
+                      <option value="left">{ROLE_LABELS.left}</option>
+                      <option value="center">{ROLE_LABELS.center}</option>
+                      <option value="right">{ROLE_LABELS.right}</option>
+                    </select>
+                  )}
                 </div>
               </div>
             );

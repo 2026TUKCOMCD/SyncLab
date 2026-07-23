@@ -7,11 +7,14 @@ import os
 import uuid
 import asyncio
 import threading
+import boto3
+from urllib.parse import urlparse
 from app.services.video_sync_editor import VideoEditServer
+from app.services.ai_highlight import BasketballHighlightDetector, get_best_device, estimate_processing_seconds
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 from app.database.connection import get_db
-from app.models.schemas import ClipData, SavedEditRequest
+from app.models.schemas import ClipData, SavedEditRequest, AIHighlightRequest
 from fastapi.security import OAuth2PasswordBearer
 from app.routers.web_auth import ALGORITHM, SECRET_KEY
 from pathlib import Path
@@ -29,6 +32,10 @@ router = APIRouter(prefix="/api/web")
 
 # 26.2.12. 추가. 서비스 인스턴스를 생성합니다. (main.py의 마운트 경로인 'exports'와 일치시킴)
 video_editor = VideoEditServer(output_dir="./exports")
+
+# AI 하이라이트 자동 생성 서비스 인스턴스 (GPU 사용 가능 시 자동 사용, 불가능하면 CPU)
+ai_highlight_detector = BasketballHighlightDetector()
+AI_HIGHLIGHT_TEMP_DIR = Path("./exports/temp")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl = "/api/web/login") # 토큰이 있는 URL 지정 -> 토큰 획득
 def get_current_session_id(token: str = Depends(oauth2_scheme)):
@@ -70,7 +77,9 @@ def get_video_list(session_id: str, db = Depends(get_db)):
     cursor = db.cursor(dictionary=True)
 
     try:
-        sql = "SELECT * FROM video WHERE session_session_id = %s"
+        # ORDER BY video_id: /api/web/ai_highlight의 카메라 조회 쿼리와 순서를 일치시켜
+        # camera_index가 프론트엔드 cameras[index]와 항상 같은 영상을 가리키도록 보장
+        sql = "SELECT * FROM video WHERE session_session_id = %s ORDER BY video_id"
         cursor.execute(sql, (session_id, ))
         result = cursor.fetchall()
 
@@ -184,6 +193,128 @@ def start_export(request: SavedEditRequest, db = Depends(get_db)):
 # GET /api/web/export/stream/{job_id} - SSE로 진행률 스트리밍
 @router.get("/export/stream/{job_id}")
 async def stream_export_progress(job_id: str):
+    async def event_generator():
+        while True:
+            if job_id not in jobs:
+                yield f"data: {json.dumps({'status': 'error', 'error': 'job not found'})}\n\n"
+                return
+
+            job = jobs[job_id]
+            yield f"data: {json.dumps(job)}\n\n"
+
+            if job["status"] in ("done", "error"):
+                del jobs[job_id]
+                return
+
+            await asyncio.sleep(0.5)
+
+    return StreamingResponse(
+        event_generator(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
+
+
+def _download_video_for_analysis(video_url: str, dest_path: str) -> str:
+    """AI 하이라이트 분석용 S3 영상 다운로드. 로컬 경로가 아니면 다운로드 후 경로 반환."""
+    if '.s3.' not in video_url and 's3.amazonaws.com' not in video_url:
+        return video_url
+
+    parsed = urlparse(video_url)
+    bucket = parsed.netloc.split('.')[0]
+    key = parsed.path.lstrip('/')
+
+    print(f"[AI Highlight][S3] Downloading s3://{bucket}/{key} -> {dest_path}")
+    s3 = boto3.client(
+        's3',
+        region_name=AWS_REGION,
+        aws_access_key_id=os.getenv('AWS_ACCESS_KEY'),
+        aws_secret_access_key=os.getenv('AWS_SECRET_KEY'),
+    )
+    s3.download_file(bucket, key, dest_path)
+    return dest_path
+
+
+# POST /api/web/ai_highlight - 농구 득점 장면 AI 자동 분석 시작, job_id 즉시 반환 (백그라운드 처리)
+@router.post("/ai_highlight")
+def start_ai_highlight(request: AIHighlightRequest, db = Depends(get_db)):
+    cursor = db.cursor(dictionary=True)
+    try:
+        sql = "SELECT * FROM video WHERE session_session_id = %s ORDER BY video_id"
+        cursor.execute(sql, (request.session_id,))
+        rows = cursor.fetchall()
+    except Exception as e:
+        print(f"DB Error: {e}")
+        raise HTTPException(status_code=500, detail="세션 영상 조회 실패")
+    finally:
+        cursor.close()
+
+    if not rows:
+        raise HTTPException(status_code=404, detail="해당 세션에 영상이 없습니다.")
+    if request.camera_index < 0 or request.camera_index >= len(rows):
+        raise HTTPException(status_code=400, detail="유효하지 않은 카메라 인덱스입니다.")
+
+    target_row = rows[request.camera_index]
+    video_url = f"{S3_BASE_URL}{target_row['video_name']}"
+
+    duration = target_row.get('duration')
+    if not duration:
+        try:
+            duration = (float(target_row['absolute_end_time']) - float(target_row['absolute_start_time'])) / 1000
+        except (KeyError, TypeError, ValueError):
+            duration = None
+
+    device = get_best_device()
+    job_id = str(uuid.uuid4())
+    jobs[job_id] = {
+        "status": "running",
+        "progress": 0,
+        "highlights": None,
+        "error": None,
+        "device": device,
+        "estimated_seconds": estimate_processing_seconds(duration, device) if duration else None,
+    }
+
+    AI_HIGHLIGHT_TEMP_DIR.mkdir(parents=True, exist_ok=True)
+
+    def run_analysis():
+        local_path = None
+        try:
+            dest_path = str(AI_HIGHLIGHT_TEMP_DIR / f"ai_highlight_{job_id}.mp4")
+            local_path = _download_video_for_analysis(video_url, dest_path)
+
+            def progress_cb(pct):
+                jobs[job_id]["progress"] = pct
+
+            highlights = ai_highlight_detector.analyze_video(
+                local_path,
+                duration=duration,
+                sensitivity=request.sensitivity,
+                progress_callback=progress_cb,
+            )
+            jobs[job_id]["highlights"] = highlights
+            jobs[job_id]["status"] = "done"
+            jobs[job_id]["progress"] = 100
+        except Exception as e:
+            print(f"[AI Highlight] 분석 실패: {e}")
+            jobs[job_id]["status"] = "error"
+            jobs[job_id]["error"] = str(e)
+        finally:
+            if local_path and local_path != video_url and os.path.exists(local_path):
+                try:
+                    os.remove(local_path)
+                except OSError:
+                    pass
+
+    thread = threading.Thread(target=run_analysis, daemon=True)
+    thread.start()
+
+    return {"job_id": job_id, "device": device}
+
+
+# GET /api/web/ai_highlight/stream/{job_id} - SSE로 진행률 및 결과 스트리밍
+@router.get("/ai_highlight/stream/{job_id}")
+async def stream_ai_highlight_progress(job_id: str):
     async def event_generator():
         while True:
             if job_id not in jobs:

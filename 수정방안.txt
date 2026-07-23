@@ -1,0 +1,301 @@
+════════════════════════════════════════════════════════════
+ 소스 타임라인 / 편집 타임라인 클립 UI 및 전체 미리보기 버그 - 원인 분석 및 수정 방안
+ 작성일: 2026-07-21
+ 상태: 원인 분석만 완료, 코드 수정은 하지 않음 (요청에 따라 분석/문서화만 진행)
+════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+버그 A. 소스 타임라인과 편집 타임라인의 클립 UI가 이상하게 표시됨
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+원인이 하나가 아니라 서로 다른 3가지 문제가 섞여 있음.
+
+[A-1. SourceTimeline의 시간 눈금자가 잘못된 변수를 사용]
+파일: web/src/components/edit/SourceTimeline.jsx (12~14행)
+
+  {[...Array(13)].map((_, i) => (
+    <span key={i}>{formatTime((duration / 12) * i).slice(0, 8)}</span>
+  ))}
+
+여기서 쓰는 `duration`은 EditPage.js의 `useState(180)` 값으로, 멀티뷰의 <video> 태그 중
+"가장 최근에 loadedmetadata 이벤트가 발생한 카메라 1개"의 원본 영상 길이를 그대로 담고
+있음(EditPage.js의 handleVideoLoaded → MultiviewGrid의 onLoadedMetadata로 연결).
+즉 어떤 카메라가 먼저 로드되느냐에 따라 달라지는, 사실상 임의의 값.
+
+반면 같은 컴포넌트 안의 클립 블록(24~25행), 선택 구간(38~39행), In/Out 마커(48행, 58행),
+재생헤드(64행)는 전부 `totalSessionDuration`(전체 세션 기준, 가장 빠른 카메라 시작~가장
+늦은 카메라 종료)을 기준으로 위치를 계산함.
+
+결과: 눈금자에 찍히는 시간 라벨과 실제 클립/재생헤드가 표시되는 위치의 "기준 축"이
+서로 다름 → 눈금자 숫자와 실제 클립 위치가 안 맞아 보임.
+
+[A-2. EditTimeline의 "이어붙이기(compact)" 모드가 잘못된 분모로 나눔]
+파일: web/src/pages/EditPage.js (compactPositions useMemo)
+      web/src/components/edit/EditTimeline.jsx (23~28행)
+
+EditPage.js의 compactPositions는 클립들을 갭 없이 순서대로 이어 붙인 "커서 위치"를
+클립 duration의 합(=totalClipDuration) 기준으로 계산함:
+  let cursor = 0;
+  ... positions[clip.id] = { left: cursor, width: clip.duration }; cursor += clip.duration;
+
+그런데 EditTimeline.jsx는 이 커서 값을 퍼센트로 바꿀 때 totalClipDuration이 아니라
+totalSessionDuration으로 나눔:
+  const leftPos = cp ? (cp.left / totalSessionDuration) * 100 : ...
+  const widthSize = cp ? (cp.width / totalSessionDuration) * 100 : ...
+
+totalClipDuration(클립들의 합)은 보통 totalSessionDuration(세션 전체 길이)보다 훨씬
+작으므로, "이어붙이기" 토글을 켜면 클립들이 트랙 전체를 채우지 못하고 왼쪽 아주 작은
+영역에 몰려서 표시됨. (totalClipDuration은 이미 EditPage.js에서 계산되어 EditHeader의
+"총 길이" 표시에 쓰이고 있는데, EditTimeline에는 전달되지 않고 있음)
+
+[A-3. 하이라이트(수동/AI) 클립은 서로 겹쳐도 되는데, 두 타임라인이 이를 구분해서
+      그리지 못함]
+관련 함수: EditPage.js의 addClip / handleHighlightConfirm / handleAIHighlightConfirm
+
+addClip(소스 타임라인에서 In/Out으로 직접 만드는 클립)만 유일하게 다른 클립과
+겹치는지(hasOverlap) 검사해서 막고 있음. 반면 handleHighlightMark(하이라이트 마킹,
+현재 시점 ±3초를 카메라마다 동시에 생성)와 handleAIHighlightConfirm(AI 하이라이트)은
+같은 시간대에 여러 카메라의 클립을 "의도적으로" 겹치게 만들고, 겹침 검사도 하지 않음.
+이 자체는 여러 카메라 앵글을 순서대로 재생하기 위한 정상적인 설계이지만, 문제는
+SourceTimeline.jsx(19행, `savedClips.map(...)`로 모든 카메라의 클립을 필터링 없이 다
+그림)와 EditTimeline.jsx(21행, 클립마다 절대 위치의 full-height div를 겹쳐 그림)가
+"겹치는 클립을 구분해서 보여주는 방식"을 전혀 갖고 있지 않다는 점.
+→ 같은 구간에 여러 클립이 쌓이면 마지막에 렌더링된 것만 보이거나 클릭되고, 나머지는
+  시각적으로 안 보이거나 겹쳐서 뭉개짐. "이어붙이기" 모드에서는 이 겹쳐 있던 클립들이
+  sequence 순서대로 일렬로 펼쳐지므로, 겹쳐 보이던 것과 일렬로 보이는 것이 서로 다른
+  모습이 되어 "이상하게 적용된다"는 인상을 줌.
+
+[수정 방향 제안 - 코드 미적용]
+- A-1: SourceTimeline의 눈금자 계산에 `duration` 대신 `totalSessionDuration`을 사용.
+- A-2: EditTimeline이 compact 모드일 때는 totalClipDuration을, 아닐 때는
+  totalSessionDuration을 분모로 쓰도록 분기(현재 totalClipDuration이 EditTimeline에
+  prop으로 전달되지 않고 있으므로 EditPage.js → EditTimeline 호출부에 prop 추가 필요).
+- A-3: 하이라이트/AI 하이라이트로 생성되는 "동시 다카메라 클립"을 정식으로 지원할
+  개념으로 볼지 결정 필요. 지원한다면 SourceTimeline/EditTimeline 모두 겹치는 클립을
+  세로로 레인(lane) 구분해서 그리는 렌더링 방식이 필요함. 단순화하려면 handleHighlightConfirm/
+  handleAIHighlightConfirm에도 addClip과 동일한 겹침 검사를 추가해서애초에 겹치는 클립이
+  생성되지 않도록 막는 방법도 있으나, 이 경우 하이라이트 기능 자체의 "여러 카메라 앵글을
+  순차 재생" 의도와 상충되므로 신중한 결정이 필요함 (기능 설계 자체를 건드리게 됨).
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+버그 B. "전체 미리보기" 클릭 시 편집 타임라인의 클립들이 프로그램 모니터에
+        순서대로 보이지 않음
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+[핵심 원인: 첫 번째 클립의 카메라만 확인하고, 2번째 이후 클립은 확인 없이 조용히
+ 멈춤]
+
+파일: web/src/pages/EditPage.js
+
+handlePreviewPlay(전체 미리보기 버튼 핸들러)는 시작할 때 딱 첫 번째 클립의 카메라만
+멀티뷰에 있는지 확인함:
+  const first = sorted[0];
+  const isInMultiview = multiviewCameras.some(cam => cam && cam.id === first.cam);
+  if (!isInMultiview) {
+    alert(`클립 ①의 카메라가 멀티뷰에 없습니다.`);
+    return;
+  }
+
+이후 재생 중 클립이 바뀔 때마다 실행되는 rAF 동기화 루프(큰 useEffect 안,
+updateAllSync 함수) 에서는 다음 클립으로 넘어갈 때마다 그 클립의 카메라가 멀티뷰에
+있는지 다시 확인함:
+  const isInMultiview = multiviewCameras.some(cam => cam && cam.id === next.cam);
+  if (isInMultiview) {
+    // ... 다음 클립으로 정상 전환
+    return;
+  }
+  // isInMultiview가 false면 여기로 떨어짐 → 조용히 종료
+  isPreviewModeRef.current = false;
+  previewClipIndexRef.current = null;
+  ... (아래에서 모든 비디오 pause, setIsPlaying(false))
+
+즉 handlePreviewPlay는 "1번 클립의 카메라"만 검사하고, 2번째·3번째... 클립의 카메라가
+멀티뷰 4칸에 들어있는지는 전혀 검사하지 않음. 실제 편집 과정에서는 "클립을 만들 때
+쓴 카메라"와 "지금 멀티뷰 4칸에 올려둔 카메라"가 항상 같다는 보장이 없음(멀티뷰는
+최대 4개인데 카메라는 그보다 많을 수 있고, 클립을 만든 뒤 멀티뷰 구성을 바꿀 수도
+있음). 이 경우 재생 중 2번째 클립으로 넘어가려는 순간 카메라가 멀티뷰에 없으면
+알림(alert)도 없이 그냥 재생이 멈춰버림 — 사용자 입장에서는 "눌러도 안 된다"로
+보이는 정확한 원인.
+
+[부차적 원인: handleClipReplay가 미리보기 상태(ref)를 정리하지 않음]
+
+개별 클립의 ▶ 버튼(EditTimeline.jsx → onClipReplay)에 연결된 handleClipReplay는
+selectedSourceCam, replayEndRef, 비디오 seek/play는 설정하지만
+isPreviewModeRef.current / previewClipIndexRef.current는 손대지 않음. 만약 이전에
+"전체 미리보기"가 비정상 종료되어 isPreviewModeRef.current가 true로 남아있는 상태에서
+개별 클립 리플레이를 누르면, rAF 루프가 이 재생을 "미리보기 이어보기"로 착각해서
+엉뚱한(이전 미리보기의 previewClipIndexRef 기준) 클립으로 자동 점프할 수 있음.
+
+[useEffect 의존성 배열 관련 - 원인 아님, 참고사항]
+rAF 동기화 루프의 useEffect 의존성 배열은
+`[isPlaying, selectedSourceCam, cameras, minAbsStart, multiviewCameras]`.
+클립 전환 시 setSelectedSourceCam(next.cam)이 호출되면 이 effect가 cleanup(기존 rAF
+취소 등) 후 재실행되며 새 마스터 비디오 기준으로 루프가 다시 시작되는데, 이 과정
+자체는 정상적으로 동작하는 것으로 확인됨(경쟁 상태나 이중 실행은 아님). 다만 재생
+연속성이 "state 변경 → effect 재실행"이라는 간접적인 방식에 의존하고 있어서
+구조적으로 취약하고, multiviewCameras가 의존성에 포함되어 있어 미리보기 도중
+멀티뷰 구성을 바꾸면 루프 전체가 재시작되는 부작용도 있음(이번 버그의 직접 원인은
+아니지만 잠재적 불안정 요소).
+
+[수정 방향 제안 - 코드 미적용]
+- handlePreviewPlay 시작 시, sorted 전체 클립이 참조하는 모든 카메라 id를 모아서
+  각각 multiviewCameras에 있는지 미리 검사하고, 없는 카메라가 있으면 몇 번 클립의
+  어떤 카메라가 빠졌는지 구체적으로 alert.
+- rAF 루프의 "다음 클립 카메라가 멀티뷰에 없음" 분기에서도 조용히 멈추지 말고
+  alert/토스트로 사용자에게 알려줄 것 (현재는 아무 피드백 없이 정지).
+- handleClipReplay 시작 시 isPreviewModeRef.current = false, previewClipIndexRef.current
+  = null을 명시적으로 초기화. 더 근본적으로는 "구간 재생을 시작/중단하는 지점"
+  (togglePlay, handleClipReplay, handlePreviewPlay, rAF 루프의 종료 분기 2곳)이 각자
+  ref를 따로 관리하고 있으므로, 하나의 공통 재생상태 초기화 함수로 정리하는 것을 권장.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+충돌/부작용 검토 (2026-07-21 추가) - 코드 미적용, 검토만 수행
+━━━━━━━━━━━━━━━━━━━━━━━━
+위 수정 방향들을 실제로 적용한다고 가정하고 다른 함수/기능과의 충돌 여부를 검토함.
+
+[A-1, A-2] 충돌 없음.
+- A-1: SourceTimeline 내부 지역 변경, 이미 totalSessionDuration을 prop으로 받고 있어
+  추가 배선 불필요.
+- A-2: EditTimeline에 totalClipDuration을 새 prop으로 넘기기만 하면 됨.
+  compactPositions의 커서 합계가 정확히 totalClipDuration과 같으므로 수치적으로
+  들어맞고, savedClips가 비어있을 때는 compactPositions가 이미 {}를 반환하므로
+  0으로 나누는 경우도 실질적으로 발생하지 않음.
+
+[A-3] ⚠️ 실제 충돌 확인됨 - "addClip과 동일한 겹침 검사를 handleHighlightConfirm/
+handleAIHighlightConfirm에 추가"하는 방향은 하이라이트 기능 자체를 고장 냄.
+addClip의 hasOverlap은 카메라 구분 없이 전역 시간대 겹침을 전부 차단하는 로직인데,
+handleHighlightMark(카메라별 ±3초 동시 생성)와 handleAIHighlightConfirm의 카메라
+역할 기반 모드(센터 카메라 빌드업 클립 + 골대 카메라 리플레이 클립, 두 클립이 득점
+시점 부근에서 시간상 서로 겹침)는 서로 다른 카메라의 클립이 같은 시간대에 겹치는
+것을 전제로 동작함. 이 검사를 그대로 적용하면 카메라가 2개 이상 겹치는 하이라이트마다
+"이미 추가된 클립과 겹칩니다" 알림과 함께 생성이 차단됨. → 겹침을 막지 않고 시각적
+으로만 레인(lane) 구분해서 그리는 방향은 클립 생성 로직(handleHighlightConfirm/
+handleAIHighlightConfirm)을 건드리지 않으므로 이 충돌이 없음.
+
+[Bug B - 전체 클립의 카메라를 시작 전에 모두 검사] ⚠️ 버그는 아니지만 사용성 저하
+가능성 있음. 멀티뷰는 최대 4칸으로 고정(addCameraToMultiview)되어 있는데, savedClips가
+참조하는 서로 다른 카메라가 4개를 초과하는 세션(예: AI 하이라이트가 여러 카메라에
+클립을 생성한 경우)에서는 "모든 클립의 카메라가 사전에 멀티뷰에 있어야 시작 가능"
+조건을 원천적으로 만족시킬 수 없음. 현재는 재생 가능한 데까지는 재생되다가 중간에
+조용히 멈추는 반면, 이 수정을 그대로 적용하면 아예 시작조차 못 하는 경우가 새로
+생길 수 있음. 근본적으로 해결하려면 "다음 클립에 필요한 카메라를 멀티뷰에 자동으로
+로드"하는 로직이 추가로 필요한데, 이는 원래 제안 범위를 벗어남.
+
+[Bug B - rAF 루프 내부에서 alert 표시] ⚠️ 주의 필요. alert()는 동기적으로 브라우저
+렌더링을 멈추는 블로킹 호출이라, 여러 비디오가 동시 재생 중인 rAF 동기화 루프
+한복판에서 호출하면 화면이 그대로 멈춘 것처럼 보일 수 있음(반복 호출되는 버그는
+아니고 1회성이지만 UX상 거슬림 — replayEndRef/isPreviewModeRef가 같은 패스에서
+초기화되므로 alert가 연속으로 여러 번 뜨는 것은 아님). handlePreviewPlay 시작 전
+사전 검사에서 쓰는 alert는 문제없으나, rAF 루프 내부에는 alert 대신 토스트 같은
+비차단 알림을 쓰는 것을 권장.
+
+[Bug B - handleClipReplay 진입 시 ref 초기화] 충돌 없음. handleClipReplay는 rAF
+루프의 미리보기 전환 로직에서 내부적으로 호출되는 함수가 아니라 EditTimeline의
+개별 ▶ 버튼에서만 호출되므로, 여기서 미리보기 상태를 초기화해도 다른 정상 흐름을
+깨뜨리지 않음. togglePlay는 원래 제안대로 건드리지 않는 것이 맞음(재생/일시정지가
+진행 중인 미리보기를 취소해버리면 안 되므로).
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+개선사항 C. "저장된 클립" UI가 카메라별로 분리되어 있지 않고,
+            시간 축 기준이 부적절함 (2026-07-23 추가) - 원인 분석만 완료, 코드 미적용
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+[문제 제기]
+하이라이트 편집 시스템은 같은 장면(시간대)을 여러 카메라 앵글로 겹쳐서 보여줘야
+하므로, "저장된 클립"은 애초에 겹침이 허용되는 게 맞음. 다만 겹치는지 아닌지는
+UI로 구분해서 확인할 수 있어야 함. 일반 편집 어플리케이션처럼 카메라 개수만큼
+저장된 클립 목록(행)이 생기고, 카메라별 클립 생성 시 해당 카메라의 목록에
+추가되는 구조가 자연스러움. 또한 소스 타임라인의 시간 표시는 경기(세션) 시간
+기준이 맞지만, 저장된 클립 목록은 각 카메라 자신의 영상 길이를 기준으로 표시
+되어야 함.
+
+[C-1. 저장된 클립이 카메라별로 분리되어 있지 않음]
+파일: web/src/components/edit/SourceTimeline.jsx (19~32행)
+
+현재 저장된 클립을 보여주는 UI는 SourceTimeline 하나뿐이고, 컴포넌트 제목은
+"소스 타임라인 - {선택된 카메라명}"이라 마치 그 카메라 것만 보여주는 것처럼
+보이지만, 실제로는 `savedClips.map(...)`이 selectedSourceCam으로 필터링하지
+않고 모든 카메라의 클립을 한 트랙에 겹쳐 그림. 이것이 기존 버그 A-3(겹치는
+클립이 뒤에 그려진 것만 보이고 클릭됨)의 근본 원인이기도 함.
+
+카메라별로 별도 행(row)을 만들면, 서로 다른 카메라의 클립은애초에 화면상 다른
+줄에 그려지므로 A-3에서 제안했던 별도의 레인(lane) 계산 로직 없이도 "다른
+카메라끼리 겹침" 문제가 해결됨. (단, 같은 카메라 안에서 클립끼리 겹치는 경우는
+별개 — C-4 참고)
+
+[C-2. 저장된 클립의 위치 계산이 세션 전체 축을 기준으로 함]
+파일: web/src/components/edit/SourceTimeline.jsx (24~25행)
+
+  left: `${(clip.global_in / totalSessionDuration) * 100}%`,
+  width: `${((clip.global_out - clip.global_in) / totalSessionDuration) * 100}%`,
+
+클립 위치가 세션 전체 길이(totalSessionDuration) 기준으로 계산됨. 카메라마다
+실제 녹화 시작/종료 시점(start_time/end_time)이 서로 다르므로, 특정 카메라의
+행을 세션 전체 축으로 그리면 그 카메라가 녹화하지 않은 구간까지 빈 공간으로
+포함되어 표시됨. 카메라별 행이라면 그 카메라 자신의 녹화 구간(영상 길이)을
+기준으로 그리는 것이 직관적임.
+
+[C-3. 카메라별 "영상 길이"는 이미 존재하는 데이터로 계산 가능 — 새로 추적할
+      필요 없음]
+
+처음에는 handleVideoLoaded(EditPage.js 984~987행)가 camId를 받고도 버린 채
+전역 duration state 하나만 덮어쓰는 문제(A-1과 동일 패턴)를 고치기 위해
+카메라별 duration을 새로 저장해야 한다고 봤으나, 재검토 결과 불필요함.
+
+`cameras` 배열은 이미 카메라마다 start_time/end_time(절대 타임스탬프)을 갖고
+있고, 앱 전체(rAF 동기화 루프의 camOffset 계산, 하이라이트 클램핑의
+camGlobalStart/camGlobalEnd 등)가 이미 "영상 길이 ≈ end_time - start_time"이라는
+전제로 동작 중임(예: `v.currentTime = target - camOffset` 방식의 시크 로직 자체가
+이 전제가 성립해야 정상 동작함). 따라서:
+
+  camDuration = (cam.end_time - cam.start_time) / 1000
+
+로 그때그때 계산하면 충분하고, 새로운 state나 이벤트 핸들러 수정이 필요 없음.
+부수 효과로 EditPage.js 277행의 `cam.duration || 10000`(cam.duration 필드가
+실제로는 세팅되는 곳이 없어 항상 10000 fallback을 타던 죽은 코드)도 같은 식으로
+교체하면 원래 의도대로 정상화됨(rAF 루프의 카메라별 유효 재생 범위 판정이
+지금은 사실상 무력화되어 있었다는 뜻이기도 함).
+
+[C-4. addClip의 겹침 검사가 카메라 구분 없이 전역으로 걸려 있어 하이라이트
+      철학과 불일치]
+파일: web/src/pages/EditPage.js (578~583행)
+
+  const hasOverlap = savedClips.some(clip => {
+    if (inPoint >= clip.global_in && inPoint < clip.global_out) return true;
+    ...
+  });
+
+addClip(수동 In/Out 클립 생성)의 hasOverlap 검사는 clip.cam으로 필터링하지
+않고 모든 카메라의 클립과 비교함. 즉 카메라 A에 클립을 만들려는데 카메라 B에
+같은 시간대 클립이 이미 있으면 막힘. 반면 handleHighlightMark/
+handleAIHighlightConfirm은 겹침 검사를 아예 하지 않음(버그 A-3에서 이미 확인).
+"저장된 클립은 카메라가 다르면 겹쳐도 된다"는 방향에 맞추려면 이 검사를
+`clip.cam === selectedSourceCam`으로 좁혀서, 같은 카메라 내부 겹침만 막고
+다른 카메라와의 겹침은 허용하도록 통일하는 것이 자연스러움.
+
+[수정 방향 제안 - 코드 미적용]
+- C-1/C-2: SourceTimeline.jsx의 savedClips 오버레이(19~32행)를 제거하거나
+  selectedSourceCam으로 필터링하고, 별도의 신규 컴포넌트(예: SavedClipsPanel)를
+  추가하여 카메라별 행으로 저장된 클립을 표시. 각 행의 좌표는
+  `localIn = clip.global_in - camOffset`, `camDuration = (cam.end_time -
+  cam.start_time) / 1000` 기준으로 계산(`(localIn / camDuration) * 100%`).
+  기존 SourceTimeline의 스크럽바(눈금자/재생헤드/In-Out 마커, A-1 수정 대상)는
+  그대로 세션 전역 축 유지 — In/Out을 찍어 global_in/global_out을 만드는
+  용도이므로 전역 축이 맞음. 즉 "클립을 만드는 스크럽바"와 "만들어진 클립을
+  훑어보는 목록"의 시간축이 서로 다른 것은 의도된 설계이지 버그가 아님.
+- C-3: 새로운 state/핸들러 불필요. camDuration은 `(cam.end_time -
+  cam.start_time) / 1000`으로 사용처마다 계산. EditPage.js 277행의
+  `cam.duration || 10000`도 동일 표현으로 교체 권장(부수적 개선).
+- C-4: addClip의 hasOverlap 필터에 `clip.cam === selectedSourceCam` 조건 추가.
+  단, 같은 카메라 내 겹침 방지는 유지 권장(겹치면 "이어붙이기" 모드에서 같은
+  구간이 중복 재생되는 부작용이 생기므로).
+
+[C-1~C-4 적용 시 기존 항목과의 관계]
+- A-3(레인 분리)과 C-1은 같은 문제(겹치는 클립이 안 구분됨)를 서로 다른
+  방식으로 푸는 대안 관계. 카메라별 행 분리(C-1)를 적용하면 "다른 카메라끼리
+  겹침"은 레인 로직 없이 해결되므로, A-3의 레인 분리는 "같은 카메라 안에서
+  클립끼리 겹치는" 드문 경우에만 필요 여부를 재검토하면 됨(C-4에서 같은 카메라
+  내 겹침을 막기로 하면 이 경우 자체가 발생하지 않아 레인 로직이 불필요해짐).
+- C-4는 addClip에만 적용되는 변경이라 handleHighlightMark/
+  handleAIHighlightConfirm(원래도 검사 없음)에는 영향 없음.
+════════════════════════════════════════════════════════════

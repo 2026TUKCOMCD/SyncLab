@@ -10,6 +10,7 @@ import ControlBar from '../components/edit/ControlBar';
 import SourceTimeline from '../components/edit/SourceTimeline';
 import EditTimeline from '../components/edit/EditTimeline';
 import HighlightPanel from '../components/edit/HighlightPanel';
+import AIHighlightPanel from '../components/edit/AIHighlightPanel';
 
 // API 베이스 URL: REACT_APP_API_URL 환경변수 → 없으면 빈 문자열(상대경로, Docker nginx 프록시 사용)
 const API_BASE = process.env.REACT_APP_API_URL || '';
@@ -45,8 +46,17 @@ function EditPage() {
   const [compactTimeline, setCompactTimeline] = useState(false);
   const [highlightClips, setHighlightClips] = useState([]);
   const [showHighlightPanel, setShowHighlightPanel] = useState(false);
+  const [showAIHighlightPanel, setShowAIHighlightPanel] = useState(false);
+  const [aiHighlightStatus, setAiHighlightStatus] = useState('idle'); // idle | running | done | error
+  const [aiHighlightProgress, setAiHighlightProgress] = useState(0);
+  const [aiHighlightDevice, setAiHighlightDevice] = useState(null);
+  const [aiHighlightEstSeconds, setAiHighlightEstSeconds] = useState(null);
+  const [aiHighlightError, setAiHighlightError] = useState(null);
+  const [aiHighlightResults, setAiHighlightResults] = useState([]);
+  const aiHighlightEventSourceRef = useRef(null);
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
   const [cameras, setCameras] = useState([]);
+  const [cameraRoles, setCameraRoles] = useState({}); // { [camId]: 'left' | 'center' | 'right' } - 골대/센터 카메라 역할
   const [sessionList, setSessionList] = useState([]); // 사용자가 참여한 여러 세션 목록을 위한 변수
   const [activeSessionId, setActiveSessionId] = useState(null); // 현재 사용자가 선택한 세션에 대한 변수
   const skipClipReset = useRef(!!location.state?.restoredClips);
@@ -61,6 +71,23 @@ function EditPage() {
     const maxEnd = Math.max(...cameras.map(c => c.end_time));
     return (maxEnd - minAbsStart) / 1000;
   }, [cameras, minAbsStart]);
+  // 모든 카메라가 동시에 녹화 중이었던 시작 시점 (가장 늦게 켜진 카메라의 시작 시간 기준)
+  // 하이라이트 클립은 이 시점 이전으로는 소급되지 않도록 시작점의 하한선으로 사용
+  const commonStartGlobal = React.useMemo(() => {
+    const validCams = cameras.filter(c => c.videoUrl);
+    if (validCams.length === 0) return 0;
+    return (Math.max(...validCams.map(c => Number(c.start_time))) - Number(minAbsStart)) / 1000;
+  }, [cameras, minAbsStart]);
+
+  // 카메라 역할(왼쪽 골대/센터/오른쪽 골대) 설정 함수 - 리소스 보관함에서 직접 지정
+  const handleSetCameraRole = (camId, role) => {
+    setCameraRoles(prev => {
+      const next = { ...prev };
+      if (role) next[camId] = role;
+      else delete next[camId];
+      return next;
+    });
+  };
 
   // 페이지 접속 시 user_id로 Session 불러오기
   useEffect(() => {
@@ -119,6 +146,14 @@ function EditPage() {
         }
         setMultiviewCameras([null, null, null, null]); // 세션 재선택 시 멀티뷰 화면 초기화
         setSelectedSourceCam(null);
+
+        // 카메라 역할 기본값 설정 (0번째 → 왼쪽 골대, 1번째 → 센터, 2번째 → 오른쪽 골대)
+        const defaultRoles = {};
+        const defaultOrder = ['left', 'center', 'right'];
+        coloredVideos.forEach((cam, index) => {
+          if (defaultOrder[index]) defaultRoles[cam.id] = defaultOrder[index];
+        });
+        setCameraRoles(defaultRoles);
       }
       catch (error) {
         console.error('네트워크 에러:', error);
@@ -660,6 +695,184 @@ function EditPage() {
     setHighlightClips([]);
   };
 
+  // AI 하이라이트 버튼 클릭 시 백엔드에 분석 요청 후 SSE로 진행률/결과 수신
+  const handleAIHighlightStart = async () => {
+    if (!activeSessionId) {
+      alert('세션을 먼저 선택해주세요.');
+      return;
+    }
+    if (cameras.length === 0) {
+      alert('분석할 카메라가 없습니다.');
+      return;
+    }
+    if (aiHighlightEventSourceRef.current) aiHighlightEventSourceRef.current.close();
+
+    setAiHighlightStatus('running');
+    setAiHighlightProgress(0);
+    setAiHighlightError(null);
+    setAiHighlightResults([]);
+    setShowAIHighlightPanel(true);
+
+    try {
+      const token = localStorage.getItem('accessToken');
+      const response = await axios.post(
+        `${API_BASE}/api/web/ai_highlight`,
+        { session_id: activeSessionId, camera_index: 0, sensitivity: 0.85 },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const { job_id } = response.data;
+
+      const es = new EventSource(`${API_BASE}/api/web/ai_highlight/stream/${job_id}`);
+      aiHighlightEventSourceRef.current = es;
+
+      es.onmessage = (e) => {
+        const data = JSON.parse(e.data);
+        setAiHighlightProgress(data.progress ?? 0);
+        if (data.device) setAiHighlightDevice(data.device);
+        if (data.estimated_seconds) setAiHighlightEstSeconds(data.estimated_seconds);
+
+        if (data.status === 'done') {
+          // 백엔드는 분석 대상 카메라(camera_index=0, 즉 cameras[0]) 영상 자체의 상대 시간으로
+          // timestamp/start/end/replay_start/replay_end를 반환하므로, 다른 카메라들과 같은
+          // 전역(세션) 시간 기준으로 쓰려면 cameras[0]의 세션 내 시작 오프셋을 더해줘야 함.
+          const analyzedCam = cameras[0];
+          const offset = analyzedCam
+            ? (Number(analyzedCam.start_time) - Number(minAbsStart)) / 1000
+            : 0;
+          const adjusted = (data.highlights || []).map(h => ({
+            ...h,
+            timestamp: h.timestamp + offset,
+            start: h.start + offset,
+            end: h.end + offset,
+            replay_start: h.replay_start + offset,
+            replay_end: h.replay_end + offset,
+          }));
+          setAiHighlightResults(adjusted);
+          setAiHighlightStatus('done');
+          es.close();
+        } else if (data.status === 'error') {
+          setAiHighlightError(data.error || '알 수 없는 오류');
+          setAiHighlightStatus('error');
+          es.close();
+        }
+      };
+
+      es.onerror = () => {
+        setAiHighlightError('서버 연결이 끊어졌습니다.');
+        setAiHighlightStatus('error');
+        es.close();
+      };
+    } catch (err) {
+      setAiHighlightError(err.response?.data?.detail || err.message);
+      setAiHighlightStatus('error');
+    }
+  };
+
+  // AI 하이라이트 패널에서 확인 클릭 시, 감지된 각 득점 구간을 savedClips에 순차 추가
+  // - 카메라 역할(왼쪽 골대/센터/오른쪽 골대)이 하나라도 설정되어 있으면: 득점마다
+  //   센터 카메라의 빌드업+득점 클립(1x) + goal_side에 맞는 골대 카메라의 슬로우 리플레이 클립(0.5x),
+  //   총 2개 클립을 순서대로 생성 (하이라이트내용정리.txt 6번 항목 멀티카메라 전략)
+  // - 역할이 하나도 설정되지 않았으면: 기존 방식대로 선택된 모든 카메라에 동일 구간 적용
+  const handleAIHighlightConfirm = (selectedHighlights, selectedCamIds) => {
+    const selectedCameras = cameras.filter(cam => selectedCamIds.includes(cam.id) && cam.videoUrl);
+    if (selectedCameras.length === 0) {
+      alert('적용할 카메라가 없습니다.');
+      return;
+    }
+
+    const sortedHighlights = [...selectedHighlights].sort((a, b) => a.timestamp - b.timestamp);
+
+    const camGlobalRange = (cam) => ({
+      start: (Number(cam.start_time) - Number(minAbsStart)) / 1000,
+      end: (Number(cam.end_time) - Number(minAbsStart)) / 1000,
+    });
+
+    let orderCounter = 0;
+    const makeClip = (cam, globalIn, globalOut, slowRate) => {
+      const { start: camGlobalStart } = camGlobalRange(cam);
+      return {
+        id: Date.now() + orderCounter,
+        sequence: 0,
+        video_url: cam.videoUrl,
+        cam: cam.id,
+        start_seek: Math.max(0, globalIn - camGlobalStart),
+        end_seek: Math.max(0, globalOut - camGlobalStart),
+        duration: globalOut - globalIn,
+        global_in: globalIn,
+        global_out: globalOut,
+        slow_rate: slowRate,
+        _insertOrder: orderCounter++,
+      };
+    };
+
+    const centerCam = cameras.find(c => cameraRoles[c.id] === 'center' && c.videoUrl);
+    const leftCam = cameras.find(c => cameraRoles[c.id] === 'left' && c.videoUrl);
+    const rightCam = cameras.find(c => cameraRoles[c.id] === 'right' && c.videoUrl);
+    const useRoleMode = !!(centerCam || leftCam || rightCam);
+
+    const newClips = [];
+
+    if (useRoleMode) {
+      sortedHighlights.forEach((highlight) => {
+        // 클립① 빌드업+득점 (센터 카메라, 정상 속도) - 모든 카메라가 동시에 켜진 시점을 시작 하한선으로 사용
+        if (centerCam) {
+          const { start: camGlobalStart, end: camGlobalEnd } = camGlobalRange(centerCam);
+          const globalIn = Math.max(camGlobalStart, commonStartGlobal, highlight.start);
+          const globalOut = Math.min(camGlobalEnd, highlight.timestamp + 1.0);
+          if (globalOut > globalIn) newClips.push(makeClip(centerCam, globalIn, globalOut, 1.0));
+        }
+        // 클립② 리플레이 (득점 방향 골대 카메라, 0.5배속)
+        const goalCam = highlight.goal_side === 'left' ? leftCam
+          : highlight.goal_side === 'right' ? rightCam
+          : (leftCam || rightCam);
+        if (goalCam) {
+          const { start: camGlobalStart, end: camGlobalEnd } = camGlobalRange(goalCam);
+          const globalIn = Math.max(camGlobalStart, highlight.replay_start);
+          const globalOut = Math.min(camGlobalEnd, highlight.replay_end);
+          if (globalOut > globalIn) newClips.push(makeClip(goalCam, globalIn, globalOut, 0.5));
+        }
+      });
+    } else {
+      sortedHighlights.forEach((highlight) => {
+        selectedCameras.forEach((cam) => {
+          const { start: camGlobalStart, end: camGlobalEnd } = camGlobalRange(cam);
+          const globalIn = Math.max(camGlobalStart, commonStartGlobal, highlight.start);
+          const globalOut = Math.min(camGlobalEnd, highlight.end);
+          if (globalOut > globalIn) newClips.push(makeClip(cam, globalIn, globalOut, 1.0));
+        });
+      });
+    }
+
+    if (newClips.length === 0) {
+      alert('선택한 카메라 범위에서 생성 가능한 클립이 없습니다.');
+      setShowAIHighlightPanel(false);
+      return;
+    }
+
+    const combined = [...savedClips, ...newClips];
+    const sorted = [...combined].sort((a, b) => {
+      if (a.global_in !== b.global_in) return a.global_in - b.global_in;
+      const aOrder = a._insertOrder ?? -1;
+      const bOrder = b._insertOrder ?? -1;
+      return aOrder - bOrder;
+    });
+    const updated = sorted.map(({ _insertOrder, ...rest }, idx) => ({
+      ...rest,
+      sequence: idx + 1,
+    }));
+
+    setSavedClips(updated);
+    setShowAIHighlightPanel(false);
+    setAiHighlightStatus('idle');
+  };
+
+  // AI 하이라이트 SSE 연결 정리 (언마운트 시)
+  useEffect(() => {
+    return () => {
+      if (aiHighlightEventSourceRef.current) aiHighlightEventSourceRef.current.close();
+    };
+  }, []);
+
   // 전체 클립 연속 재생 함수
   const handlePreviewPlay = () => {
     if (savedClips.length === 0) {
@@ -831,6 +1044,22 @@ function EditPage() {
         />
       )}
 
+      {showAIHighlightPanel && (
+        <AIHighlightPanel
+          status={aiHighlightStatus}
+          progress={aiHighlightProgress}
+          device={aiHighlightDevice}
+          estimatedSeconds={aiHighlightEstSeconds}
+          error={aiHighlightError}
+          highlights={aiHighlightResults}
+          cameras={cameras}
+          cameraRoles={cameraRoles}
+          onConfirm={handleAIHighlightConfirm}
+          onClose={() => setShowAIHighlightPanel(false)}
+          onRetry={handleAIHighlightStart}
+        />
+      )}
+
       <EditHeader
         savedClips={savedClips}
         totalClipDuration={totalClipDuration}
@@ -849,6 +1078,8 @@ function EditPage() {
           multiviewCameras={multiviewCameras}
           onCameraClick={addCameraToMultiview}
           getProxyUrl={getProxyUrl}
+          cameraRoles={cameraRoles}
+          onSetCameraRole={handleSetCameraRole}
         />
 
         <div className="workspace-area">
@@ -863,6 +1094,7 @@ function EditPage() {
               onRemoveCamera={removeCameraFromMultiview}
               onVideoLoaded={handleVideoLoaded}
               getProxyUrl={getProxyUrl}
+              cameraRoles={cameraRoles}
             />
             <ProgramMonitor
               selectedSourceCam={selectedSourceCam}
@@ -900,6 +1132,8 @@ function EditPage() {
               onSetOut={setOut}
               onAddClip={addClip}
               onHighlightMark={handleHighlightMark}
+              onAIHighlight={handleAIHighlightStart}
+              aiHighlightRunning={aiHighlightStatus === 'running'}
               onSetShowSettings={setShowSettings}
               onSetPlaybackRate={setPlaybackRate}
               onSetFps={setFps}

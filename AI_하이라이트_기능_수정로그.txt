@@ -1,0 +1,255 @@
+════════════════════════════════════════════════════════════
+ AI 하이라이트 자동 생성 기능 구현 - 수정 로그
+ 작성일: 2026-07-21
+ 참고 문서: 하이라이트내용정리.txt
+════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+1. 배경
+━━━━━━━━━━━━━━━━━━━━━━━━
+- 하이라이트내용정리.txt 에 "비전 기반(YOLOv8+OpenCV) 농구 득점 자동 감지" 설계가
+  문서화되어 있었으나, 실제 코드에는 반영되어 있지 않았음.
+- synclab-backend/app/services/ai_highlight.py 는 오디오(librosa) 기반의
+  AudioAnalyzer 클래스만 존재했고, 어떤 라우터에서도 import/사용되지 않는
+  고아 파일(dead code) 상태였음. (grep으로 참조 0건 확인)
+- 프론트엔드에는 "AI 하이라이트" 버튼/패널이 전혀 존재하지 않았음.
+  (기존 "하이라이트 마킹" 버튼은 재생 중 현재 시점 ±3초를 수동으로 자르는
+   별개 기능이며, 이번 작업과 무관하게 그대로 유지함)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+2. 신규 생성 파일
+━━━━━━━━━━━━━━━━━━━━━━━━
+- web/src/components/edit/AIHighlightPanel.jsx
+    → AI 분석 진행률(장치/경과/예상시간) 표시 + 감지된 득점 장면 결과 목록
+      (신뢰도, 시간, 골대 방향, 포함 여부) + 적용할 카메라 선택 UI
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+3. 수정한 기존 파일 및 사유
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+[synclab-backend/app/services/ai_highlight.py] — 전체 재작성
+  사유: 이 파일은 어디에서도 사용되지 않는 고아 파일이었고, 참고 문서 자체가
+        "오디오 방식 → 비전 방식으로 교체" 결정을 명시하고 있어 재작성이
+        기능 구현의 본질임 (수정하지 않으면 기능을 만들 수 없음).
+  내용: BasketballHighlightDetector 클래스 구현
+        - YOLOv8(ultralytics) 농구공 궤적 추적 + 포물선(슛) 감지 (1차)
+        - 공 감지 실패 시 동작 에너지 급감→회복 패턴 폴백 (2차)
+        - 빌드업 시작점 역추적, 클립 구간 산출, 신뢰도 정렬/상위 25개 반환
+        - get_best_device(): torch.cuda.is_available() 확인 후
+          GPU 가능 시 "cuda", 불가능/torch 미설치 시 "cpu" 자동 반환
+        - estimate_processing_seconds(): 영상 길이·장치 기준 예상 소요시간 계산
+        - 위험요소(모델 다운로드 실패, 추론 예외)는 모두 try/except로 감싸
+          자동으로 동작 에너지 폴백으로 전환되도록 처리 (전체 작업 중단 방지)
+
+[synclab-backend/app/models/schemas.py] — 추가만 함 (기존 내용 변경 없음)
+  사유: 새 API 요청 바디 스키마 필요
+  내용: AIHighlightRequest(session_id, camera_index=0, sensitivity=0.85) 추가
+
+[synclab-backend/app/routers/web_video.py] — 추가만 함 (기존 함수/로직 변경 없음)
+  사유: AI 하이라이트 API 엔드포인트 필요 (버튼이 있어야 기능이 동작하듯,
+        엔드포인트가 있어야 프론트에서 호출 가능)
+  내용:
+    - import 3줄 추가 (boto3, urlparse, ai_highlight 모듈, AIHighlightRequest)
+    - ai_highlight_detector 인스턴스 생성 (기존 video_editor 인스턴스 옆에 추가)
+    - POST /api/web/ai_highlight
+        DB에서 세션의 영상 목록 조회 → camera_index 번째 영상을 S3에서
+        임시 다운로드 → 백그라운드 스레드로 분석 실행 → job_id 즉시 반환
+        (기존 POST /export 의 job_id + threading 패턴을 그대로 재사용)
+    - GET /api/web/ai_highlight/stream/{job_id}
+        기존 GET /export/stream/{job_id} 와 동일한 SSE 패턴 재사용
+    - 기존 jobs 딕셔너리를 그대로 공유 사용 (새 dict 추가하지 않음,
+      export와 job_id 네임스페이스는 uuid4라 충돌 없음)
+
+[synclab-backend/requirements.txt] — 추가만 함 (기존 줄 삭제/변경 없음)
+  내용: ultralytics, opencv-python-headless, numpy, scipy 추가
+  주의: torch 는 ultralytics 설치 시 자동으로 함께 설치됨.
+        실제 GPU 가속을 쓰려면 CUDA 지원 torch 빌드가 필요하며,
+        일반 `pip install ultralytics` 는 환경에 따라 CPU 전용 torch를
+        설치할 수 있음 (5번 항목 참고).
+
+[web/src/components/edit/ControlBar.jsx] — 최소 수정
+  사유: "AI 하이라이트" 버튼이 있어야 기능을 실행할 수 있음
+  내용: Sparkles 아이콘 import 추가, 함수 인자에 onAIHighlight/
+        aiHighlightRunning 2개 추가, 기존 "하이라이트 마킹" 버튼 옆에
+        새 버튼 1개 추가. 기존 버튼/로직은 한 글자도 변경하지 않음.
+
+[web/src/pages/EditPage.js] — 추가 위주 수정 (기존 함수 내부 변경 없음)
+  사유: 버튼 클릭 → API 호출 → SSE 진행률 수신 → 결과 패널 표시 →
+        타임라인(savedClips) 반영까지의 흐름을 연결하는 상태/핸들러 필요
+  내용:
+    - import AIHighlightPanel 1줄 추가
+    - useState 8개 추가 (기존 상태는 건드리지 않음)
+    - handleAIHighlightStart(): axios POST + EventSource로 SSE 구독
+      (ExportPage.js 의 기존 EventSource 패턴을 그대로 재사용)
+    - handleAIHighlightConfirm(): 감지된 각 하이라이트 구간을 선택된
+      카메라별로 savedClips에 순차 추가
+      (기존 handleHighlightConfirm의 정렬/시퀀스 로직 그대로 재사용,
+       복사 후 입력 데이터만 다르게 처리 — 기존 함수는 변경하지 않음)
+    - SSE 연결 정리용 useEffect 1개 추가
+    - JSX에 <AIHighlightPanel> 렌더링 블록 추가, <ControlBar>에
+      onAIHighlight/aiHighlightRunning prop 2개 추가
+    - 기존 handleHighlightMark, handleHighlightConfirm, 렌더링 구조 등
+      기존 코드는 그대로 유지함 (한 줄도 삭제하지 않음)
+
+[web/src/App.css] — 추가만 함 (기존 클래스 변경 없음)
+  내용: .btn-ai-highlight, .ai-highlight-* 클래스 약 140줄 추가
+        (기존 .highlight-panel-*, .highlight-clip-row 등 공용 클래스는
+         그대로 재사용하여 새 CSS 최소화)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+4. 축소한 범위 (의도적으로 구현하지 않은 부분)
+━━━━━━━━━━━━━━━━━━━━━━━━
+- 하이라이트내용정리.txt 6번 항목의 "카메라 역할(왼쪽골대/센터/오른쪽골대)
+  자동 지정 + 빌드업/리플레이 클립을 다른 카메라로 자동 분리" 전략은
+  구현하지 않음. 대신 감지된 각 득점 구간을 사용자가 선택한 모든 카메라에
+  동일하게 적용하는 방식(문서의 "역할 미설정 시 기존 방식")으로 구현함.
+  → 백엔드 응답에는 goal_side/replay_start/replay_end 필드를 이미 포함하고
+    있으므로, 추후 프론트엔드에 카메라 역할 UI만 추가하면 확장 가능함.
+- 분석 대상 카메라는 문서에 명시된 대로 1번째 카메라(camera_index=0)로 고정.
+- sensitivity 조절 UI는 추가하지 않음 (기본값 0.85 고정, API 파라미터는
+  이미 열려 있어 추후 슬라이더만 추가하면 됨).
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+5. 검증 절차 및 결과
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+[백엔드 - 문법 검증]
+  명령: py -3 -m py_compile app/services/ai_highlight.py app/models/schemas.py
+        app/routers/web_video.py
+  결과: EXIT CODE 0 (문법 오류 없음)
+
+[백엔드 - 런타임 의존성]
+  확인 결과: 현재 개발 환경에 ultralytics, opencv(cv2), numpy, scipy, torch
+             가 설치되어 있지 않음 (fastapi만 설치됨).
+  → 실행 전 반드시 아래 명령 필요:
+       pip install -r synclab-backend/requirements.txt
+  → GPU(CUDA)를 실제로 쓰려면 설치 환경에 NVIDIA 드라이버 + CUDA 지원
+    torch가 필요함. 없으면 get_best_device()가 자동으로 "cpu"를 반환하므로
+    기능 자체는 CPU에서도 정상 동작함 (에러 없이 느리게 동작).
+  → 이 환경에는 GPU/torch가 없어 실제 추론 실행 테스트는 수행하지 못했음
+    (설치 용량이 크고 실제 GPU 유무를 확인할 수 없어 생략). 코드 경로상
+    문제(문법, import 구조, 함수 시그니처)는 py_compile로만 확인됨.
+
+[프론트엔드 - 빌드 검증]
+  명령: npm run build (web/ 디렉터리)
+  결과: 빌드 성공 ("The build folder is ready to be deployed.")
+  경고: eslint 경고 6건 발생 — 전부 이번 작업과 무관한 기존 코드 라인
+        (EditPage.js 96/141/154/324행, ExportPage.js 89행, LiveListPage.js
+         38행, LoginPage.js 92행, RegisterPage.js 81행)에서 발생한 기존
+        경고이며, 새로 추가한 코드(AIHighlightPanel.jsx, ControlBar.jsx의
+        신규 라인, EditPage.js의 신규 핸들러)에서는 경고/에러 0건.
+  → 신규 기능이 기존 빌드를 깨뜨리지 않음을 확인함.
+
+[미실행 검증]
+  - 실제 서버 기동 후 브라우저에서 버튼 클릭 → 분석 → 결과 확인까지의
+    End-to-End 테스트는 수행하지 않음 (DB 연결, S3 자격 증명, GPU/CPU
+    환경, 실제 세션 데이터가 이 대화 환경에 없음).
+  - 하이라이트내용정리.txt 4번 항목의 테스트 절차(세션 SID_20260306_9c041f)를
+    따라 실제 서버에서 확인하는 것을 권장함.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+6. 영상 길이당 예상 소요 시간
+━━━━━━━━━━━━━━━━━━━━━━━━
+(ai_highlight.py 의 estimate_processing_seconds() 계산 로직 기준,
+ YOLOv8n 공개 벤치마크를 참고한 근사치이며 이 환경에서 실측하지 않은
+ 추정값임 — 실제 서버의 CPU/GPU 사양에 따라 달라질 수 있음)
+
+  5fps 샘플링 기준:
+    GPU(CUDA) 사용 시   : 영상 1분당 약 6초 처리 (+ 고정 오버헤드 약 5초)
+    CPU 전용 사용 시     : 영상 1분당 약 35초 처리 (+ 고정 오버헤드 약 5초)
+
+  예시:
+    5분 영상  → GPU 약 35초 / CPU 약 3분
+    10분 영상 → GPU 약 65초 / CPU 약 6분
+    30분 영상 → GPU 약 3분  / CPU 약 18분
+
+  → 위 수치는 AIHighlightPanel.jsx에서 "예상 약 X:XX" 형태로
+    사용자에게도 진행률 화면에 표시되도록 구현함 (경과 시간과 함께 노출).
+  → 실제 배포 서버의 GPU/CPU로 한 번 실행해 본 뒤, 이 파일의
+    EST_SEC_PER_MIN_GPU / EST_SEC_PER_MIN_CPU 상수를 실측값으로
+    보정하는 것을 권장함.
+
+════════════════════════════════════════════════════════════
+ 2차 수정 (2026-07-21) - 카메라 역할 기반 멀티캠 하이라이트
+════════════════════════════════════════════════════════════
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+1. 배경
+━━━━━━━━━━━━━━━━━━━━━━━━
+하이라이트내용정리.txt 6번 항목("멀티카메라 하이라이트 구성 전략")에 설계되어 있었지만
+1차 구현에서는 의도적으로 축소했던 부분(카메라 역할 지정 + 역할 기반 자동 2클립 생성)을
+이번에 구현함. 추가로 사용자 요청에 따라 "모든 카메라가 동시에 켜진 시점"을 하이라이트
+시작점의 하한선으로 사용하도록 변경.
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+2. 수정한 기존 파일 및 사유
+━━━━━━━━━━━━━━━━━━━━━━━━
+
+[web/src/pages/EditPage.js]
+  - cameraRoles state 추가: { [camId]: 'left'|'center'|'right' }.
+    세션(카메라 목록) 로드 시 0/1/2번째 카메라에 left/center/right 기본값 자동 지정
+    (하이라이트내용정리.txt 199행 명시 기본값과 동일), 세션 전환 시 함께 초기화됨.
+  - commonStartGlobal useMemo 추가: videoUrl이 있는 모든 카메라 중 가장 늦게 시작한
+    카메라의 시작 시각을 세션 기준 초 단위로 환산한 값. "모든 카메라가 동시에 녹화
+    중이었던 최초 시점"을 의미.
+  - handleAIHighlightStart의 SSE 'done' 처리에 오프셋 보정 추가: 백엔드는 분석 대상
+    카메라(camera_index=0, 즉 cameras[0]) 영상 자체의 상대 시간으로 timestamp/start/
+    end/replay_start/replay_end를 반환하므로, cameras[0]의 세션 내 시작 오프셋을
+    더해서 다른 카메라들과 같은 전역 시간 기준으로 맞춤. (이 보정이 없으면 cameras[0]가
+    세션에서 가장 먼저 시작한 카메라가 아닐 경우 하이라이트 구간이 실제와 다른 시점을
+    가리키는 잠재 버그가 있었음 — 이번에 함께 수정)
+  - handleAIHighlightConfirm 전면 수정:
+    · cameraRoles에 하나라도 역할이 지정되어 있으면(역할 모드): 득점마다 센터 카메라의
+      빌드업+득점 클립(1x, 시작점은 max(카메라 시작, commonStartGlobal, 하이라이트 시작))
+      + goal_side에 맞는 골대 카메라의 리플레이 클립(0.5x)을 순서대로 2개 생성
+      (하이라이트내용정리.txt 176~210행 전략 그대로 구현).
+    · 역할이 하나도 지정되지 않았으면: 기존처럼 선택된 모든 카메라에 동일 구간 적용
+      (이번엔 시작점 하한선만 commonStartGlobal 추가 적용).
+    · 생성된 클립을 savedClips에 병합해 타임라인에 저장하는 로직은 기존 그대로 유지.
+  - CameraResourceList / MultiviewGrid / AIHighlightPanel 호출부에 cameraRoles(및
+    설정 함수) prop 추가.
+
+[web/src/components/edit/CameraResourceList.jsx]
+  사유: "리소스 보관함에서 멀티뷰로 가져올 때 방향을 설정하는 옵션" 요청 반영
+  내용: 각 카메라 카드 안에 방향 선택 <select>(왼쪽 골대/센터/오른쪽 골대/미지정) 추가.
+        클릭 시 카드 전체의 onClick(addCameraToMultiview)이 함께 발생하지 않도록
+        stopPropagation 처리. 기존 카드 클릭/썸네일/체크뱃지 로직은 그대로 유지.
+
+[web/src/components/edit/MultiviewGrid.jsx]
+  사유: 멀티뷰에 올라간 카메라가 어떤 역할인지 바로 확인 가능하도록
+  내용: 기존 cam-label(카메라 이름 배지) 옆에 역할 배지를 조건부로 추가만 함.
+        (예: "CAM 1 · 왼쪽 골대") 기존 라벨/삭제버튼/신호대기 로직은 그대로 유지.
+
+[web/src/components/edit/AIHighlightPanel.jsx]
+  내용: cameraRoles prop 추가. 역할이 하나라도 설정되어 있으면 기존 "적용할 카메라"
+        체크박스 목록 대신 역할 기반 자동 모드 안내 문구를 표시하고, 카메라 미선택
+        경고도 역할 모드에서는 생략(역할 모드는 selectedCamIds를 쓰지 않으므로).
+
+[web/src/App.css]
+  내용: .camera-role-select, .cam-role-badge, .ai-highlight-role-info 클래스 추가만 함.
+
+[synclab-backend/app/routers/web_video.py]
+  사유: 프론트엔드 cameras[0]과 백엔드 camera_index=0이 항상 같은 영상을 가리키도록
+        보장하기 위한 정합성 수정 (역할 기반 로직이 정확히 동작하려면 필수)
+  내용: get_video_list의 SQL에 `ORDER BY video_id` 1줄 추가.
+        (AI 하이라이트 엔드포인트가 이미 같은 정렬을 쓰고 있었는데, 세션 영상 목록
+        조회는 정렬이 없어 두 쿼리 결과 순서가 어긋날 가능성이 있었음 — 이론상
+        MySQL이 기본키 순으로 반환하는 경우가 많아 지금까지는 문제가 드러나지 않았을
+        뿐, 순서를 명시적으로 보장하지 않는 잠재 버그였음)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+3. 검증
+━━━━━━━━━━━━━━━━━━━━━━━━
+- py -3 -m py_compile app/routers/web_video.py → EXIT 0
+- npm run build (web/) → 빌드 성공, 신규 경고/에러 0건 (기존에 있던 경고 6건만 그대로
+  유지, 전부 이번에 건드리지 않은 기존 코드 라인)
+- 실제 세션/영상 데이터로 브라우저에서 역할 지정 → AI 하이라이트 → 타임라인 반영까지
+  이어지는 End-to-End 테스트는 수행하지 못함 (1차 로그와 동일한 사유: 이 환경에
+  DB/S3/실제 세션 데이터 없음)
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+4. 별도 요청: 타임라인 UI/전체 미리보기 버그
+━━━━━━━━━━━━━━━━━━━━━━━━
+소스 타임라인/편집 타임라인 클립 UI 불일치, "전체 미리보기" 미동작 문제는 요청에 따라
+코드는 수정하지 않고 원인 분석만 진행함. 상세 내용은 저장소 루트의 수정방안.txt 참고.
+════════════════════════════════════════════════════════════

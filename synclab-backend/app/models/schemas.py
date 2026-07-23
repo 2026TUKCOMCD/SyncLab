@@ -239,4 +239,14 @@ class ClipData(BaseModel):
 class SavedEditRequest(BaseModel):
     session_id: str
     edit_data: List[ClipData]
-    
+
+
+# ============================================
+# AI 하이라이트 자동 생성 (농구 득점 장면 감지)
+# ============================================
+
+class AIHighlightRequest(BaseModel):
+    """AI 하이라이트 분석 요청"""
+    session_id: str
+    camera_index: int = 0  # 분석 대상 카메라 인덱스 (기본: 첫 번째 카메라)
+    sensitivity: float = Field(default=0.85, ge=0.0, le=1.0)

@@ -1,4 +1,4 @@
-import { Play, Pause, SkipBack, SkipForward, Plus, Settings, Star } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Plus, Settings, Star, Sparkles } from 'lucide-react';
 
 function ControlBar({
   selectedSourceCam, isPlaying, currentTime, totalSessionDuration,
@@ -6,7 +6,7 @@ function ControlBar({
   videoRefs, programVideoRef, settingsPanelRef, showSettings,
   onSetCurrentTime, onTogglePlay, onSetIn, onSetOut, onAddClip,
   onSetShowSettings, onSetPlaybackRate, onSetFps, onSetSkipFrames, onToggleCompact,
-  inPoint, outPoint, onHighlightMark,
+  inPoint, outPoint, onHighlightMark, onAIHighlight, aiHighlightRunning,
 }) {
   return (
     <div className="timeline-header">
@@ -75,6 +75,16 @@ function ControlBar({
         >
           <Star size={16} />
           하이라이트 마킹
+        </button>
+
+        <button
+          className="btn-base btn-ai-highlight"
+          onClick={onAIHighlight}
+          disabled={aiHighlightRunning}
+          title="AI가 득점 장면을 자동으로 감지하여 하이라이트를 생성합니다"
+        >
+          <Sparkles size={16} />
+          {aiHighlightRunning ? 'AI 분석 중...' : 'AI 하이라이트'}
         </button>
 
         {/* 설정 드롭다운 */}

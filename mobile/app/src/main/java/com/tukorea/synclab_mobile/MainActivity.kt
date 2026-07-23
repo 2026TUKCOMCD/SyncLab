@@ -105,7 +105,7 @@ fun MainAppScaffold() {
         bottomBar = {
             if (showBottomBar) {
                 NavigationBar(
-                    containerColor = Color.White,
+                    containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 8.dp,
                 ) {
                     bottomNavItems.forEach { screen ->

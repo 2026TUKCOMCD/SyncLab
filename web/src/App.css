@@ -1233,6 +1233,176 @@ body {
   cursor: not-allowed;
 }
 
+/* --- AI 하이라이트 버튼 --- */
+.btn-ai-highlight {
+  background: linear-gradient(135deg, #8b5cf6, #6366f1);
+  color: white;
+}
+
+.btn-ai-highlight:disabled {
+  background: #c4b5fd;
+  cursor: not-allowed;
+}
+
+/* --- AI 하이라이트 패널 --- */
+.ai-highlight-progress-section {
+  padding: 28px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.ai-highlight-device-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6366f1;
+  background: #eef2ff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  margin-bottom: 6px;
+}
+
+.ai-highlight-eta {
+  font-size: 12px;
+  color: #6b7280;
+}
+
+.ai-highlight-error-section {
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+
+.ai-highlight-error-msg {
+  font-size: 13px;
+  color: #dc2626;
+  text-align: center;
+  margin: 0;
+}
+
+.ai-highlight-empty {
+  padding: 32px 24px;
+  text-align: center;
+  color: #9ca3af;
+  font-size: 13px;
+}
+
+.ai-highlight-side-badge {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6366f1;
+  background: #eef2ff;
+  border-radius: 6px;
+  padding: 1px 7px;
+  flex-shrink: 0;
+}
+
+.ai-highlight-confidence {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100px;
+  flex-shrink: 0;
+}
+
+.ai-highlight-confidence-bar {
+  flex: 1;
+  height: 6px;
+  border-radius: 3px;
+  background: #e5e7eb;
+  overflow: hidden;
+}
+
+.ai-highlight-confidence-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #8b5cf6, #6366f1);
+  border-radius: 3px;
+}
+
+.ai-highlight-confidence-text {
+  font-size: 11px;
+  font-weight: 600;
+  color: #6b7280;
+  width: 32px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.ai-highlight-cam-select {
+  padding: 10px 16px 4px;
+  border-top: 1px solid #e5e7eb;
+}
+
+.ai-highlight-cam-select-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: #6b7280;
+  display: block;
+  margin-bottom: 6px;
+}
+
+.ai-highlight-cam-select-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.ai-highlight-cam-chip {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  color: #374151;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.ai-highlight-cam-chip input[type="checkbox"] {
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+}
+
+/* --- 카메라 역할(방향) 설정 --- */
+.camera-role-select {
+  width: 100%;
+  padding: 4px 6px;
+  font-size: 11px;
+  border: 1px solid #4b5563;
+  border-radius: 5px;
+  background-color: #1f2937;
+  color: #e5e7eb;
+  cursor: pointer;
+}
+
+.cam-role-badge {
+  font-weight: 500;
+  opacity: 0.9;
+}
+
+.ai-highlight-role-info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 10px 16px 4px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #eef2ff;
+  color: #4338ca;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* --- 슬로우 모션 배지 (편집 타임라인 클립) --- */
 .clip-slowmo-badge {
   display: inline-block;
