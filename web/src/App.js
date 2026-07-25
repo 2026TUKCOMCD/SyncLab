@@ -8,8 +8,6 @@ import MainPage from './pages/MainPage';
 import RegisterPage from './pages/RegisterPage';
 import EditPage from './pages/EditPage';
 import ExportPage from './pages/ExportPage';
-import LivePage from './pages/LivePage';
-import LiveListPage from './pages/LiveListPage';
 
 function PrivateRoute({ element }) {
   const token = localStorage.getItem('accessToken');
@@ -34,12 +32,6 @@ function App() {
 
         {/* /export 로 오면 ExportPage(내보내기 진행) 보여줌 — 로그인 필요 */}
         <Route path="/export" element={<PrivateRoute element={<ExportPage />} />} />
-
-        {/* /live/:sessionId 로 오면 LivePage(라이브 시청) 보여줌 */}
-        <Route path="/live/:sessionId" element={<LivePage />} />
-
-        {/* /lives 로 오면 LiveListPage(라이브 목록) 보여줌 */}
-        <Route path="/lives" element={<LiveListPage />} />
       </Routes>
     </BrowserRouter>
   );

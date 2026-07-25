@@ -36,7 +36,8 @@ function EditPage() {
   const pendingProgramSeek = useRef(null); // 카메라 전환 시 새 프로그램 비디오 seek 대기값
   const replayEndRef = useRef(null); // 리플레이 종료 시점 저장
   const previewClipIndexRef = useRef(null); // 전체 미리보기 현재 클립 인덱스
-  const isPreviewModeRef = useRef(false); // 전체 미리보기 모드 여부
+  const isPreviewModeRef = useRef(false); // 전체 미리보기 모드 여부 (rAF 동기화 루프에서 참조)
+  const [isPreviewMode, setIsPreviewModeState] = useState(false); // 위 ref와 동일한 값의 state (버튼 on/off 표시용)
   const settingsPanelRef = useRef(null);   // 드롭다운 외부 클릭 감지용
   const [showSettings, setShowSettings] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
@@ -52,7 +53,8 @@ function EditPage() {
   const [aiHighlightDevice, setAiHighlightDevice] = useState(null);
   const [aiHighlightEstSeconds, setAiHighlightEstSeconds] = useState(null);
   const [aiHighlightError, setAiHighlightError] = useState(null);
-  const [aiHighlightResults, setAiHighlightResults] = useState([]);
+  const [aiHighlightResults, setAiHighlightResults] = useState([]); // 세션당 마지막 분석 결과 유지 (재분석 없이 재편집 가능하도록 confirm 이후에도 비우지 않음)
+  const [aiHighlightSelectedCamIds, setAiHighlightSelectedCamIds] = useState([]);
   const aiHighlightEventSourceRef = useRef(null);
   const [multiviewCameras, setMultiviewCameras] = useState([null, null, null, null]);
   const [cameras, setCameras] = useState([]);
@@ -143,6 +145,8 @@ function EditPage() {
           skipClipReset.current = false;
         } else {
           setSavedClips([]); // 세션 재선택 시 클립 초기화
+          setAiHighlightResults([]); // 세션 재선택 시 이전 세션의 AI 하이라이트 결과도 함께 초기화 (다른 세션 결과가 남아있지 않도록)
+          setAiHighlightSelectedCamIds([]);
         }
         setMultiviewCameras([null, null, null, null]); // 세션 재선택 시 멀티뷰 화면 초기화
         setSelectedSourceCam(null);
@@ -197,12 +201,27 @@ function EditPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [showSettings]);
 
+  // 재생 진행의 기준(마스터) 비디오를 가져옴: 멀티뷰 그리드에 해당 카메라가 있으면 그 타일을,
+  // 없으면(예: 전체 미리보기 중 그리드에 없는 카메라로 넘어가는 클립) 프로그램 모니터 자신을 사용
+  const getMasterVideo = (camId) => videoRefs.current[camId] || programVideoRef.current;
+
+  // 전체 미리보기/클립 리플레이 모드를 명시적으로 종료 (그리드 캠 직접 클릭, 타임라인 스크럽,
+  // 미리보기 버튼으로 직접 끄기 등 "수동 편집" 의도가 분명한 조작에서만 호출해야 함.
+  // 일반 재생/일시정지 버튼(togglePlay)에서는 호출하지 않음 - 미리보기 중 잠깐 멈췄다 다시
+  // 재생했을 때 미리보기가 이어지도록 유지하기 위함)
+  const exitPreviewMode = () => {
+    isPreviewModeRef.current = false;
+    previewClipIndexRef.current = null;
+    replayEndRef.current = null;
+    setIsPreviewModeState(false);
+  };
+
   // 현재 재생 중인 동영상의 시간을 보여주기 위한 함수로 타임라인의 Bar가 이동하거나 숫자 표시
   useEffect(() => {
     /* 동기화 재생 로직 */
     if (isPlaying && selectedSourceCam !== null) {
       const updateAllSync = () => {
-        const masterVideo = videoRefs.current[selectedSourceCam];
+        const masterVideo = getMasterVideo(selectedSourceCam);
         const mainCam = cameras.find(c => c.id === selectedSourceCam);
 
         if (masterVideo && mainCam && !masterVideo.paused) {
@@ -218,42 +237,40 @@ function EditPage() {
               const nextIndex = previewClipIndexRef.current + 1;
               if (nextIndex < sorted.length) {
                 const next = sorted[nextIndex];
-                const isInMultiview = multiviewCameras.some(cam => cam && cam.id === next.cam);
-                if (isInMultiview) {
-                  previewClipIndexRef.current = nextIndex;
-                  replayEndRef.current = next.global_out;
-                  const masterTime = next.global_in;
-                  setCurrentTime(masterTime);
-                  setSelectedSourceCam(next.cam);
-                  multiviewCameras.forEach(cam => {
-                    if (!cam) return;
-                    const v = videoRefs.current[cam.id];
-                    if (!v) return;
-                    const offset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
-                    v.currentTime = Math.max(0, masterTime - offset);
-                  });
-                  const nextCam = cameras.find(c => c.id === next.cam);
-                  if (nextCam && programVideoRef.current) {
-                    const offset = (Number(nextCam.start_time) - Number(minAbsStart)) / 1000;
-                    pendingProgramSeek.current = Math.max(0, masterTime - offset);
-                    programVideoRef.current.currentTime = Math.max(0, masterTime - offset);
-                  }
-                  // 클립별 슬로우 모션(slow_rate) 반영
-                  playbackRateRef.current = next.slow_rate || 1.0;
-                  const nextMaster = videoRefs.current[next.cam];
-                  if (nextMaster) {
-                    nextMaster.playbackRate = playbackRateRef.current;
-                    nextMaster.play().catch(() => {});
-                  }
-                  if (programVideoRef.current) {
-                    programVideoRef.current.playbackRate = playbackRateRef.current;
-                    programVideoRef.current.play().catch(() => {});
-                  }
-                  return;
+                previewClipIndexRef.current = nextIndex;
+                replayEndRef.current = next.global_out;
+                const masterTime = next.global_in;
+                setCurrentTime(masterTime);
+                setSelectedSourceCam(next.cam);
+                multiviewCameras.forEach(cam => {
+                  if (!cam) return;
+                  const v = videoRefs.current[cam.id];
+                  if (!v) return;
+                  const offset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
+                  v.currentTime = Math.max(0, masterTime - offset);
+                });
+                const nextCam = cameras.find(c => c.id === next.cam);
+                if (nextCam && programVideoRef.current) {
+                  const offset = (Number(nextCam.start_time) - Number(minAbsStart)) / 1000;
+                  pendingProgramSeek.current = Math.max(0, masterTime - offset);
+                  programVideoRef.current.currentTime = Math.max(0, masterTime - offset);
                 }
+                // 클립별 슬로우 모션(slow_rate) 반영
+                playbackRateRef.current = next.slow_rate || 1.0;
+                const nextMaster = getMasterVideo(next.cam);
+                if (nextMaster) {
+                  nextMaster.playbackRate = playbackRateRef.current;
+                  nextMaster.play().catch(() => {});
+                }
+                if (programVideoRef.current) {
+                  programVideoRef.current.playbackRate = playbackRateRef.current;
+                  programVideoRef.current.play().catch(() => {});
+                }
+                return;
               }
               isPreviewModeRef.current = false;
               previewClipIndexRef.current = null;
+              setIsPreviewModeState(false); // 미리보기가 끝까지 재생을 마쳐 자연 종료된 경우에도 버튼 표시를 off로
             }
             Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
             if (programVideoRef.current) programVideoRef.current.pause();
@@ -273,8 +290,9 @@ function EditPage() {
 
             const camOffset = (Number(cam.start_time) - Number(minAbsStart)) / 1000;
             const targetTime = calculateMasterTime - camOffset;
+            const camDuration = (Number(cam.end_time) - Number(cam.start_time)) / 1000;
 
-            if (targetTime >= 0 && targetTime <= (cam.duration || 10000)) {
+            if (targetTime >= 0 && targetTime <= camDuration) {
               if (v.paused) v.play().catch(() => { });
 
               const diff = v.currentTime - targetTime;
@@ -303,7 +321,7 @@ function EditPage() {
 
       animationRef.current = requestAnimationFrame(updateAllSync);
 
-      const masterVideo = videoRefs.current[selectedSourceCam];
+      const masterVideo = getMasterVideo(selectedSourceCam);
 
       // 버퍼링 해소 시 루프 재시작
       const handleCanPlay = () => {
@@ -380,6 +398,8 @@ function EditPage() {
 
   // 멀티뷰 소스에서 비디오 선택 시 프로그램 모니터의 비디오로 설정 및 초기화 함수
   const handleSourceCamClick = (camId) => {
+    // 그리드에서 캠을 직접 클릭하는 것은 명백한 수동 편집 의도이므로 미리보기/리플레이 상태 종료
+    exitPreviewMode();
     if (selectedSourceCam === camId) return;
 
     // state(currentTime)는 rAF 루프에 의해 최대 16ms 지연될 수 있어
@@ -463,6 +483,9 @@ function EditPage() {
   const handleTimelineClick = (e) => {
     if (selectedSourceCam === null || !timelineRef.current) return;
     if (isDraggingIn || isDraggingOut) return;
+
+    // 타임라인을 직접 클릭해 시점을 옮기는 것도 명백한 수동 편집 의도이므로 미리보기/리플레이 상태 종료
+    exitPreviewMode();
 
     const rect = timelineRef.current.getBoundingClientRect();
     const x = Math.max(0, Math.min(e.clientX - rect.left, rect.width));
@@ -576,6 +599,7 @@ function EditPage() {
       return;
     }
     const hasOverlap = savedClips.some(clip => {
+      if (clip.cam !== selectedSourceCam) return false;
       if (inPoint >= clip.global_in && inPoint < clip.global_out) return true;
       if (outPoint > clip.global_in && outPoint <= clip.global_out) return true;
       if (inPoint <= clip.global_in && outPoint >= clip.global_out) return true;
@@ -619,6 +643,11 @@ function EditPage() {
   // 생성된 클립 제거
   const removeClip = (clipId) => {
     setSavedClips(savedClips.filter(clip => clip.id !== clipId));
+  };
+
+  // 클립 "더보기" 모달에서 배속 등 속성을 수정했을 때 반영
+  const updateClip = (clipId, updates) => {
+    setSavedClips(prev => prev.map(clip => clip.id === clipId ? { ...clip, ...updates } : clip));
   };
 
   // 하이라이트 마킹 버튼 클릭 시 현재 시점 ±3초 구간을 카메라별로 자동 생성
@@ -696,7 +725,9 @@ function EditPage() {
   };
 
   // AI 하이라이트 버튼 클릭 시 백엔드에 분석 요청 후 SSE로 진행률/결과 수신
-  const handleAIHighlightStart = async () => {
+  // forceRerun이 false이고 이미 이번 세션에서 분석해둔 결과가 있으면, 재분석 없이 그 결과를 다시 띄워서
+  // 포함/제외 여부를 다시 편집할 수 있게 함 (AIHighlightPanel의 "다시 분석" 버튼이 forceRerun=true로 호출)
+  const handleAIHighlightStart = async (forceRerun = false) => {
     if (!activeSessionId) {
       alert('세션을 먼저 선택해주세요.');
       return;
@@ -705,6 +736,20 @@ function EditPage() {
       alert('분석할 카메라가 없습니다.');
       return;
     }
+
+    // 이미 백그라운드에서 분석이 진행 중이면(패널만 닫아둔 상태) 새로 요청을 보내지 않고
+    // 진행 중인 팝업을 다시 띄워서 진행률을 확인할 수 있게 함
+    if (aiHighlightStatus === 'running') {
+      setShowAIHighlightPanel(true);
+      return;
+    }
+
+    if (!forceRerun && aiHighlightResults.length > 0) {
+      setAiHighlightStatus('done');
+      setShowAIHighlightPanel(true);
+      return;
+    }
+
     if (aiHighlightEventSourceRef.current) aiHighlightEventSourceRef.current.close();
 
     setAiHighlightStatus('running');
@@ -713,11 +758,18 @@ function EditPage() {
     setAiHighlightResults([]);
     setShowAIHighlightPanel(true);
 
+    // 골 방향(goal_side)은 분석 영상 프레임 내 좌우 위치로 판정하므로, 반드시 코트 전체가 보이는
+    // "센터" 역할 카메라를 분석해야 함. 역할이 지정되어 있지 않으면 기존처럼 첫 번째 카메라로 폴백.
+    // cam.id는 백엔드의 video_id 정렬 순서와 동일한 인덱스라 그대로 camera_index로 사용 가능
+    // (web_video.py의 /api/web/list, /api/web/ai_highlight가 같은 ORDER BY video_id를 사용).
+    const centerCamForAnalysis = cameras.find(c => cameraRoles[c.id] === 'center' && c.videoUrl) || cameras[0];
+    const analysisCameraIndex = centerCamForAnalysis ? centerCamForAnalysis.id : 0;
+
     try {
       const token = localStorage.getItem('accessToken');
       const response = await axios.post(
         `${API_BASE}/api/web/ai_highlight`,
-        { session_id: activeSessionId, camera_index: 0, sensitivity: 0.85 },
+        { session_id: activeSessionId, camera_index: analysisCameraIndex, sensitivity: 0.85 },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       const { job_id } = response.data;
@@ -732,10 +784,10 @@ function EditPage() {
         if (data.estimated_seconds) setAiHighlightEstSeconds(data.estimated_seconds);
 
         if (data.status === 'done') {
-          // 백엔드는 분석 대상 카메라(camera_index=0, 즉 cameras[0]) 영상 자체의 상대 시간으로
+          // 백엔드는 분석 대상 카메라(centerCamForAnalysis) 영상 자체의 상대 시간으로
           // timestamp/start/end/replay_start/replay_end를 반환하므로, 다른 카메라들과 같은
-          // 전역(세션) 시간 기준으로 쓰려면 cameras[0]의 세션 내 시작 오프셋을 더해줘야 함.
-          const analyzedCam = cameras[0];
+          // 전역(세션) 시간 기준으로 쓰려면 그 카메라의 세션 내 시작 오프셋을 더해줘야 함.
+          const analyzedCam = centerCamForAnalysis;
           const offset = analyzedCam
             ? (Number(analyzedCam.start_time) - Number(minAbsStart)) / 1000
             : 0;
@@ -768,12 +820,21 @@ function EditPage() {
     }
   };
 
-  // AI 하이라이트 패널에서 확인 클릭 시, 감지된 각 득점 구간을 savedClips에 순차 추가
+  // AI 하이라이트 패널에서 확인 클릭 시, 감지된 각 득점 구간을 savedClips에 반영
   // - 카메라 역할(왼쪽 골대/센터/오른쪽 골대)이 하나라도 설정되어 있으면: 득점마다
   //   센터 카메라의 빌드업+득점 클립(1x) + goal_side에 맞는 골대 카메라의 슬로우 리플레이 클립(0.5x),
   //   총 2개 클립을 순서대로 생성 (하이라이트내용정리.txt 6번 항목 멀티카메라 전략)
   // - 역할이 하나도 설정되지 않았으면: 기존 방식대로 선택된 모든 카메라에 동일 구간 적용
-  const handleAIHighlightConfirm = (selectedHighlights, selectedCamIds) => {
+  //
+  // allHighlights는 이번 패널에 표시된 전체 하이라이트(포함/제외 상태 포함)이며, 재분석 없이 다시 열어
+  // 편집(포함했다 뺐다)할 수 있도록 이 값 그대로 aiHighlightResults에 저장해둔다. 확정 시에는 이 배치에
+  // 속한 하이라이트에서 이전에 생성된 클립(sourceHighlightId로 식별)을 모두 지우고 현재 포함 상태로
+  // 다시 생성해서, 재확정해도 클립이 중복되거나 제외했는데 남아있는 문제가 없도록 한다.
+  const handleAIHighlightConfirm = (allHighlights, selectedCamIds) => {
+    setAiHighlightResults(allHighlights);
+    setAiHighlightSelectedCamIds(selectedCamIds);
+
+    const selectedHighlights = allHighlights.filter(h => h.included);
     const selectedCameras = cameras.filter(cam => selectedCamIds.includes(cam.id) && cam.videoUrl);
     if (selectedCameras.length === 0) {
       alert('적용할 카메라가 없습니다.');
@@ -788,7 +849,7 @@ function EditPage() {
     });
 
     let orderCounter = 0;
-    const makeClip = (cam, globalIn, globalOut, slowRate) => {
+    const makeClip = (cam, globalIn, globalOut, slowRate, sourceHighlightId) => {
       const { start: camGlobalStart } = camGlobalRange(cam);
       return {
         id: Date.now() + orderCounter,
@@ -801,6 +862,7 @@ function EditPage() {
         global_in: globalIn,
         global_out: globalOut,
         slow_rate: slowRate,
+        sourceHighlightId,
         _insertOrder: orderCounter++,
       };
     };
@@ -819,17 +881,19 @@ function EditPage() {
           const { start: camGlobalStart, end: camGlobalEnd } = camGlobalRange(centerCam);
           const globalIn = Math.max(camGlobalStart, commonStartGlobal, highlight.start);
           const globalOut = Math.min(camGlobalEnd, highlight.timestamp + 1.0);
-          if (globalOut > globalIn) newClips.push(makeClip(centerCam, globalIn, globalOut, 1.0));
+          if (globalOut > globalIn) newClips.push(makeClip(centerCam, globalIn, globalOut, 1.0, highlight.id));
         }
-        // 클립② 리플레이 (득점 방향 골대 카메라, 0.5배속)
+        // 클립② 리플레이 (득점 방향 골대 카메라, 배속은 하이라이트 패널에서 설정한 값 - 기본 1x)
+        // 득점 방향이 애매하게(unknown) 판정된 경우 잘못된 쪽 카메라로 리플레이가 만들어지는 것을 막기 위해
+        // 리플레이 클립 자체를 생성하지 않는다 (빌드업 클립은 그대로 생성됨)
         const goalCam = highlight.goal_side === 'left' ? leftCam
           : highlight.goal_side === 'right' ? rightCam
-          : (leftCam || rightCam);
+          : null;
         if (goalCam) {
           const { start: camGlobalStart, end: camGlobalEnd } = camGlobalRange(goalCam);
           const globalIn = Math.max(camGlobalStart, highlight.replay_start);
           const globalOut = Math.min(camGlobalEnd, highlight.replay_end);
-          if (globalOut > globalIn) newClips.push(makeClip(goalCam, globalIn, globalOut, 0.5));
+          if (globalOut > globalIn) newClips.push(makeClip(goalCam, globalIn, globalOut, highlight.slow_rate ?? 1.0, highlight.id));
         }
       });
     } else {
@@ -838,18 +902,23 @@ function EditPage() {
           const { start: camGlobalStart, end: camGlobalEnd } = camGlobalRange(cam);
           const globalIn = Math.max(camGlobalStart, commonStartGlobal, highlight.start);
           const globalOut = Math.min(camGlobalEnd, highlight.end);
-          if (globalOut > globalIn) newClips.push(makeClip(cam, globalIn, globalOut, 1.0));
+          if (globalOut > globalIn) newClips.push(makeClip(cam, globalIn, globalOut, highlight.slow_rate ?? 1.0, highlight.id));
         });
       });
     }
 
-    if (newClips.length === 0) {
+    // 이번 배치(allHighlights)에서 이전에 생성된 클립은 전부 제거하고 위에서 새로 만든 클립으로 교체
+    // → 재확정해도 중복 생성되지 않고, 제외한 하이라이트의 클립은 정확히 사라짐
+    const batchHighlightIds = new Set(allHighlights.map(h => h.id));
+    const keptClips = savedClips.filter(c => !c.sourceHighlightId || !batchHighlightIds.has(c.sourceHighlightId));
+
+    if (newClips.length === 0 && keptClips.length === savedClips.length) {
       alert('선택한 카메라 범위에서 생성 가능한 클립이 없습니다.');
       setShowAIHighlightPanel(false);
       return;
     }
 
-    const combined = [...savedClips, ...newClips];
+    const combined = [...keptClips, ...newClips];
     const sorted = [...combined].sort((a, b) => {
       if (a.global_in !== b.global_in) return a.global_in - b.global_in;
       const aOrder = a._insertOrder ?? -1;
@@ -873,19 +942,23 @@ function EditPage() {
     };
   }, []);
 
-  // 전체 클립 연속 재생 함수
+  // 전체 클립 연속 재생 버튼: on/off 토글. 이미 미리보기 중이면 끄고 수동 편집으로 복귀,
+  // 아니면 처음 클립부터 이어서 미리보기 시작
   const handlePreviewPlay = () => {
+    if (isPreviewModeRef.current) {
+      exitPreviewMode();
+      Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
+      if (programVideoRef.current) programVideoRef.current.pause();
+      setIsPlaying(false);
+      return;
+    }
+
     if (savedClips.length === 0) {
       alert('저장된 클립이 없습니다.');
       return;
     }
     const sorted = [...savedClips].sort((a, b) => a.sequence - b.sequence);
     const first = sorted[0];
-    const isInMultiview = multiviewCameras.some(cam => cam && cam.id === first.cam);
-    if (!isInMultiview) {
-      alert(`클립 ①의 카메라가 멀티뷰에 없습니다.`);
-      return;
-    }
 
     if (isPlaying) {
       Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
@@ -895,6 +968,7 @@ function EditPage() {
 
     isPreviewModeRef.current = true;
     previewClipIndexRef.current = 0;
+    setIsPreviewModeState(true);
 
     setSelectedSourceCam(first.cam);
     replayEndRef.current = first.global_out;
@@ -919,7 +993,7 @@ function EditPage() {
 
     // 클립별 슬로우 모션(slow_rate) 반영
     playbackRateRef.current = first.slow_rate || 1.0;
-    const masterVideo = videoRefs.current[first.cam];
+    const masterVideo = getMasterVideo(first.cam);
     if (masterVideo) {
       masterVideo.playbackRate = playbackRateRef.current;
       masterVideo.play().catch(() => {});
@@ -933,11 +1007,8 @@ function EditPage() {
 
   // 클립 클릭 시 해당 구간 리플레이 함수
   const handleClipReplay = (clip) => {
-    const isInMultiview = multiviewCameras.some(cam => cam && cam.id === clip.cam);
-    if (!isInMultiview) {
-      alert('해당 클립의 카메라가 멀티뷰에 없습니다.');
-      return;
-    }
+    // 이전 "전체 미리보기"가 비정상 종료되어 남아있을 수 있는 미리보기 상태를 초기화
+    exitPreviewMode();
 
     if (isPlaying) {
       Object.values(videoRefs.current).forEach(v => { if (v) v.pause(); });
@@ -968,7 +1039,7 @@ function EditPage() {
 
     // 클립별 슬로우 모션(slow_rate) 반영
     playbackRateRef.current = clip.slow_rate || 1.0;
-    const masterVideo = videoRefs.current[clip.cam];
+    const masterVideo = getMasterVideo(clip.cam);
     if (masterVideo) {
       masterVideo.playbackRate = playbackRateRef.current;
       masterVideo.play().catch(() => {});
@@ -1052,11 +1123,13 @@ function EditPage() {
           estimatedSeconds={aiHighlightEstSeconds}
           error={aiHighlightError}
           highlights={aiHighlightResults}
+          initialSelectedCamIds={aiHighlightSelectedCamIds}
           cameras={cameras}
           cameraRoles={cameraRoles}
           onConfirm={handleAIHighlightConfirm}
           onClose={() => setShowAIHighlightPanel(false)}
-          onRetry={handleAIHighlightStart}
+          onRetry={() => handleAIHighlightStart(true)}
+          onRerun={() => handleAIHighlightStart(true)}
         />
       )}
 
@@ -1067,6 +1140,7 @@ function EditPage() {
         onSave={handleSavedClips}
         onLogoClick={() => navigate('/')}
         onPreviewPlay={handlePreviewPlay}
+        isPreviewMode={isPreviewMode}
       />
 
       <div className="main-content">
@@ -1132,7 +1206,7 @@ function EditPage() {
               onSetOut={setOut}
               onAddClip={addClip}
               onHighlightMark={handleHighlightMark}
-              onAIHighlight={handleAIHighlightStart}
+              onAIHighlight={() => handleAIHighlightStart()}
               aiHighlightRunning={aiHighlightStatus === 'running'}
               onSetShowSettings={setShowSettings}
               onSetPlaybackRate={setPlaybackRate}
@@ -1160,8 +1234,12 @@ function EditPage() {
               compactTimeline={compactTimeline}
               compactPositions={compactPositions}
               totalSessionDuration={totalSessionDuration}
+              totalClipDuration={totalClipDuration}
+              minAbsStart={minAbsStart}
+              formatTime={formatTime}
               onRemoveClip={removeClip}
               onClipReplay={handleClipReplay}
+              onUpdateClip={updateClip}
             />
           </div>
         </div>

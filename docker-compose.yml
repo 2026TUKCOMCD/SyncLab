@@ -38,8 +38,6 @@ services:
     environment:
       # DB_HOST를 컨테이너 서비스명으로 덮어씀 (localhost 대신 'db' 사용)
       DB_HOST: db
-      # LiveKit 관리 API용 내부 URL (Docker 서비스명으로 직접 접근)
-      LIVEKIT_SERVER_URL: http://livekit:7880
     volumes:
       - exports_data:/app/exports
     ports:
@@ -56,23 +54,6 @@ services:
       timeout: 10s
       retries: 3
       start_period: 15s
-
-  # =============================================
-  # LiveKit - 실시간 스트리밍 서버
-  # =============================================
-  livekit:
-    image: livekit/livekit-server:latest
-    container_name: synclab-livekit
-    restart: unless-stopped
-    command: --config /etc/livekit.yaml
-    volumes:
-      - ./livekit.yaml:/etc/livekit.yaml
-    ports:
-      - "7880:7880"       # HTTP API
-      - "7881:7881"       # TCP
-      - "7882:7882/udp"   # UDP/TURN
-    networks:
-      - synclab-network
 
   # =============================================
   # 프론트엔드 - React + nginx

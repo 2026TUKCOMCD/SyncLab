@@ -67,49 +67,6 @@ function MainPage() {
         </div>
 
         {/* 섹션 B: 라이브 방송 */}
-        <div style={{
-          margin: '0 auto 48px',
-          maxWidth: 900,
-          background: 'linear-gradient(135deg, #0F172A 0%, #1E293B 100%)',
-          borderRadius: 16,
-          border: '1px solid #334155',
-          padding: '32px 40px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 24,
-        }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 10 }}>
-              <span style={{ color: '#EF4444', fontSize: 20 }}>●</span>
-              <span style={{ color: '#EF4444', fontWeight: 700, fontSize: 13, letterSpacing: 1 }}>LIVE</span>
-            </div>
-            <h2 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 700, color: '#F1F5F9' }}>
-              지금 진행 중인 라이브 방송
-            </h2>
-            <p style={{ margin: 0, fontSize: 14, color: '#94A3B8' }}>
-              다양한 각도로 촬영 중인 실시간 방송을 시청하세요.
-            </p>
-          </div>
-          <button
-            onClick={() => navigate('/lives')}
-            style={{
-              flexShrink: 0,
-              padding: '14px 28px',
-              backgroundColor: '#DC2626',
-              color: '#fff',
-              border: 'none',
-              borderRadius: 10,
-              cursor: 'pointer',
-              fontSize: 15,
-              fontWeight: 700,
-              whiteSpace: 'nowrap',
-            }}
-          >
-            📺 라이브 보러가기
-          </button>
-        </div>
-
         {/* 섹션 C: 기술적 특징 3가지 (Tech Grid) */}
         <h2 className="tech-section-title">어떤 기술이 있나요?</h2>
 

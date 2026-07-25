@@ -7,11 +7,17 @@ function formatShortTime(seconds) {
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
 
+const SLOW_OPTIONS = [
+  { label: '1x', value: 1.0 },
+  { label: '½x', value: 0.5 },
+  { label: '¼x', value: 0.25 },
+];
+
 // AI 하이라이트 자동 생성 결과 패널
 // status: 'running' (분석 진행 중) | 'done' (결과 표시)
 function AIHighlightPanel({
   status, progress, device, estimatedSeconds, error,
-  highlights, cameras, cameraRoles = {}, onConfirm, onClose, onRetry,
+  highlights, cameras, cameraRoles = {}, initialSelectedCamIds, onConfirm, onClose, onRetry, onRerun,
 }) {
   const useRoleMode = Object.values(cameraRoles).some(Boolean);
   const [elapsed, setElapsed] = useState(0);
@@ -30,14 +36,28 @@ function AIHighlightPanel({
 
   useEffect(() => {
     if (status === 'done' && highlights) {
-      setClips(highlights.map(h => ({ ...h, included: true })));
-      setSelectedCamIds(cameras.filter(c => c.videoUrl).map(c => c.id));
+      // 재분석 없이 다시 연 경우 highlights에 이미 담긴 included/slow_rate 상태를 그대로 유지
+      setClips(highlights.map(h => ({
+        ...h,
+        included: h.included !== undefined ? h.included : true,
+        slow_rate: h.slow_rate !== undefined ? h.slow_rate : 1.0,
+      })));
+      setSelectedCamIds(
+        initialSelectedCamIds && initialSelectedCamIds.length > 0
+          ? initialSelectedCamIds
+          : cameras.filter(c => c.videoUrl).map(c => c.id)
+      );
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [status, highlights]);
 
   const toggleClip = (id) => {
     setClips(prev => prev.map(c => c.id === id ? { ...c, included: !c.included } : c));
+  };
+
+  // 하이라이트별 리플레이 배속 설정 (역할 모드면 골대 리플레이 클립, 아니면 생성되는 클립 자체의 배속)
+  const setClipSlowRate = (id, rate) => {
+    setClips(prev => prev.map(c => c.id === id ? { ...c, slow_rate: rate } : c));
   };
 
   const toggleCam = (camId) => {
@@ -56,7 +76,7 @@ function AIHighlightPanel({
       alert('최소 1개 이상의 카메라를 선택해주세요.');
       return;
     }
-    onConfirm(selected, selectedCamIds);
+    onConfirm(clips, selectedCamIds);
   };
 
   const goalSideLabel = (side) => {
@@ -142,6 +162,19 @@ function AIHighlightPanel({
                         <span className="ai-highlight-confidence-text">{clip.confidence}%</span>
                       </div>
 
+                      <div className="highlight-slowmo-btns">
+                        {SLOW_OPTIONS.map(({ label, value }) => (
+                          <button
+                            key={value}
+                            className={`highlight-slowmo-btn${clip.slow_rate === value ? ' highlight-slowmo-btn--active' : ''}`}
+                            onClick={() => setClipSlowRate(clip.id, value)}
+                            disabled={!clip.included}
+                          >
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
                       <label className="highlight-include-toggle">
                         <input
                           type="checkbox"
@@ -159,8 +192,9 @@ function AIHighlightPanel({
             {useRoleMode ? (
               <div className="ai-highlight-role-info">
                 <Sparkles size={13} />
-                카메라 역할이 설정되어 있어 득점마다 <strong>센터 카메라(빌드업)</strong> +{' '}
-                <strong>득점 방향 골대 카메라(0.5x 리플레이)</strong> 클립이 자동으로 생성됩니다.
+                카메라 역할이 설정되어 있어 득점마다 <strong>센터 카메라(빌드업, 1x)</strong> +{' '}
+                <strong>득점 방향 골대 카메라(리플레이)</strong> 클립이 자동으로 생성됩니다.
+                리플레이 배속은 각 하이라이트 행에서 조절할 수 있습니다(기본 1x).
                 (리소스 보관함에서 카메라 방향을 변경할 수 있습니다)
               </div>
             ) : (
@@ -194,6 +228,9 @@ function AIHighlightPanel({
             <button className="btn-base btn-secondary" onClick={onClose}>
               {status === 'running' ? '백그라운드에서 계속' : '취소'}
             </button>
+            {status === 'done' && onRerun && (
+              <button className="btn-base btn-secondary" onClick={onRerun}>다시 분석</button>
+            )}
             {status === 'done' && (
               <button className="btn-base btn-primary" onClick={handleConfirm}>타임라인에 추가</button>
             )}

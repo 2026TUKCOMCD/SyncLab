@@ -80,11 +80,10 @@ function ControlBar({
         <button
           className="btn-base btn-ai-highlight"
           onClick={onAIHighlight}
-          disabled={aiHighlightRunning}
-          title="AI가 득점 장면을 자동으로 감지하여 하이라이트를 생성합니다"
+          title={aiHighlightRunning ? '분석이 백그라운드에서 진행 중입니다. 클릭하면 진행 상황 팝업을 다시 엽니다.' : 'AI가 득점 장면을 자동으로 감지하여 하이라이트를 생성합니다'}
         >
           <Sparkles size={16} />
-          {aiHighlightRunning ? 'AI 분석 중...' : 'AI 하이라이트'}
+          {aiHighlightRunning ? 'AI 분석 중... (클릭해서 확인)' : 'AI 하이라이트'}
         </button>
 
         {/* 설정 드롭다운 */}

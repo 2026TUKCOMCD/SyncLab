@@ -35,6 +35,3 @@ loguru==0.7.2
 # CORS
 python-jose[cryptography]==3.3.0
 passlib[bcrypt]==1.7.4
-
-# LiveKit
-livekit-api

@@ -107,14 +107,21 @@ class VideoEditServer:
 
         print(f"--- 편집 시작: 세션 {session_id} / 임시 폴더: {job_temp.name} ---")
 
+        # 같은 카메라(video_url)를 참조하는 클립이 여러 개일 때 원본을 중복 다운로드하지 않도록
+        # job 안에서만 유지되는 캐시 (video_url -> 이미 받아둔 로컬 경로)
+        downloaded_cache = {}
+
         try:
             for i, edit in enumerate(sorted_edits):
                 seg_path = job_temp / f"seg_{i:03d}.mp4"
                 video_url = edit['video_url']
 
+                if video_url in downloaded_cache:
+                    input_path = downloaded_cache[video_url]
+                    print(f"[Cache] 이미 다운로드된 영상 재사용: {input_path}")
                 # S3 URL이면 job 전용 폴더에 다운로드
-                if '.s3.' in video_url or 's3.amazonaws.com' in video_url:
-                    src_path = str(job_temp / f"src_{i:03d}.mp4")
+                elif '.s3.' in video_url or 's3.amazonaws.com' in video_url:
+                    src_path = str(job_temp / f"src_{len(downloaded_cache):03d}.mp4")
                     parsed = urlparse(video_url)
                     bucket = parsed.netloc.split('.')[0]
                     key = parsed.path.lstrip('/')
@@ -127,8 +134,10 @@ class VideoEditServer:
                     )
                     s3.download_file(bucket, key, src_path)
                     print(f"[S3] Download complete")
+                    downloaded_cache[video_url] = src_path
                     input_path = src_path
                 else:
+                    downloaded_cache[video_url] = video_url
                     input_path = video_url
 
                 print(f"[{i+1}/{total}] 자르는 중: ({edit['start_seek']}s ~ +{edit['duration']}s)")

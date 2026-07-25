@@ -10,13 +10,13 @@ function SourceTimeline({ selectedSourceCam, cameras, duration, savedClips, tota
       </div>
       <div className="time-ruler">
         {[...Array(13)].map((_, i) => (
-          <span key={i}>{formatTime((duration / 12) * i).slice(0, 8)}</span>
+          <span key={i}>{formatTime((totalSessionDuration / 12) * i).slice(0, 8)}</span>
         ))}
       </div>
       <div className="timeline-track" ref={timelineRef} onClick={onTimelineClick}>
         <div className="track-bg" style={{ backgroundColor: '#ffffff', border: '2px solid rgb(0,0,0)' }} />
 
-        {savedClips.map((clip) => (
+        {savedClips.filter(clip => clip.cam === selectedSourceCam).map((clip) => (
           <div
             key={clip.id}
             className="clip-region"
